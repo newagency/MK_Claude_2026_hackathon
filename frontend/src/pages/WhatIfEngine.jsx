@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { BarChart, Card, Title } from "@tremor/react";
 import { TrendingUp, Fuel, Users, BarChart2 } from "lucide-react";
+import BrandAnalysis from "../components/BrandAnalysis";
 
 const BASELINE = { exchange_rate_krw: 1380, oil_price_usd: 75, min_wage_change_pct: 0 };
 const ICONS = {
@@ -169,14 +170,16 @@ const OutputPanel = ({ result, liveResult }) => {
       </Card>
 
       <Card className="p-5">
-        <Title>품목별 원가 비교 (월)</Title>
+        <Title style={{ color: "var(--text-h)" }}>품목별 원가 비교 (월)</Title>
         <BarChart
           className="h-56 mt-4"
           data={chartData}
           index="name"
           categories={["기준 원가", "예상 원가"]}
-          colors={["slate", "indigo"]}
+          colors={["sky", "violet"]}
           showAnimation
+          yAxisWidth={60}
+          style={{ color: "var(--text-h)" }}
         />
       </Card>
     </div>
@@ -230,9 +233,12 @@ const WhatIfEngine = () => {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-5 py-7 grid grid-cols-1 md:grid-cols-2 gap-8">
-        <InputPanel inputs={inputs} setInputs={set} onSimulate={handleSimulate} loading={loading} />
-        <OutputPanel result={result} liveResult={liveResult} />
+      <div className="max-w-5xl mx-auto px-5 py-7">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <InputPanel inputs={inputs} setInputs={set} onSimulate={handleSimulate} loading={loading} />
+          <OutputPanel result={result} liveResult={liveResult} />
+        </div>
+        <BrandAnalysis />
       </div>
     </div>
   );

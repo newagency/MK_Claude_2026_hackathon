@@ -156,3 +156,6 @@ body { margin: 0; background: var(--bg-subtle); }
   background: var(--bg-card) !important;
   border-color: var(--border) !important;
 }
+.tremor-Chart-root text {
+  fill: var(--text) !important;
+}
