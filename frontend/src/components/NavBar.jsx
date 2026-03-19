@@ -33,24 +33,46 @@ const DateInput = ({ value, max, onChange }) => (
   />
 );
 
+const YearInput = ({ value, onChange }) => (
+  <input
+    type="text"
+    inputMode="numeric"
+    value={String(value)}
+    onChange={(e) => {
+      const raw = e.target.value.replace(/\D/g, "");
+      if (raw.length < 4) return;
+      const num = parseInt(raw.slice(0, 4), 10);
+      if (num >= 2020 && num <= 2030) onChange(num);
+    }}
+    onFocus={(e) => e.target.select()}
+    className="w-9 text-center text-xs font-semibold tabular-nums bg-transparent outline-none
+               rounded hover:bg-[var(--surface)] focus:bg-[var(--surface)] transition-colors"
+    style={{ color: "var(--text-h)" }}
+  />
+);
+
 const NavBar = ({ page, setPage, selectedDate, setSelectedDate, onPrevDate, onNextDate }) => {
+  const yyyy = selectedDate.getFullYear();
   const mm = selectedDate.getMonth() + 1;
   const dd = selectedDate.getDate();
   const dayName = WEEKDAYS[selectedDate.getDay()];
 
-  const updateMonth = (newMonth) => {
-    const y = selectedDate.getFullYear();
-    const maxDay = daysInMonth(y, newMonth);
+  const updateYear = (newYear) => {
+    const maxDay = daysInMonth(newYear, mm);
     const d = Math.min(dd, maxDay);
-    setSelectedDate(clampToToday(new Date(y, newMonth - 1, d)));
+    setSelectedDate(clampToToday(new Date(newYear, mm - 1, d)));
+  };
+
+  const updateMonth = (newMonth) => {
+    const maxDay = daysInMonth(yyyy, newMonth);
+    const d = Math.min(dd, maxDay);
+    setSelectedDate(clampToToday(new Date(yyyy, newMonth - 1, d)));
   };
 
   const updateDay = (newDay) => {
-    const y = selectedDate.getFullYear();
-    const m = selectedDate.getMonth();
-    const maxDay = daysInMonth(y, m + 1);
+    const maxDay = daysInMonth(yyyy, mm);
     const d = Math.min(newDay, maxDay);
-    setSelectedDate(clampToToday(new Date(y, m, d)));
+    setSelectedDate(clampToToday(new Date(yyyy, mm - 1, d)));
   };
 
   return (
@@ -120,9 +142,11 @@ const NavBar = ({ page, setPage, selectedDate, setSelectedDate, onPrevDate, onNe
             </button>
 
             <div className="flex items-center text-xs font-semibold" style={{ color: "var(--text-h)" }}>
+              <YearInput value={yyyy} onChange={updateYear} />
+              <span className="select-none" style={{ opacity: 0.4 }}>.</span>
               <DateInput value={mm} max={12} onChange={updateMonth} />
               <span className="select-none" style={{ opacity: 0.4 }}>.</span>
-              <DateInput value={dd} max={daysInMonth(selectedDate.getFullYear(), mm)} onChange={updateDay} />
+              <DateInput value={dd} max={daysInMonth(yyyy, mm)} onChange={updateDay} />
               <span className="ml-0.5 select-none" style={{ opacity: 0.4 }}>({dayName})</span>
             </div>
 
