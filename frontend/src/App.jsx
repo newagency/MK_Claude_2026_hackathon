@@ -6,13 +6,27 @@ import LinkAuditor from "./pages/LinkAuditor";
 
 const App = () => {
   const [page, setPage] = useState("dashboard");
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  const shiftDate = (days) =>
+    setSelectedDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(next.getDate() + days);
+      return next > new Date() ? prev : next;
+    });
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
-      <NavBar page={page} setPage={setPage} />
-      {page === "dashboard" && <RiskDashboard />}
-      {page === "whatif"    && <WhatIfEngine />}
-      {page === "auditor"   && <LinkAuditor />}
+      <NavBar
+        page={page}
+        setPage={setPage}
+        selectedDate={selectedDate}
+        onPrevDate={() => shiftDate(-1)}
+        onNextDate={() => shiftDate(1)}
+      />
+      {page === "dashboard" && <RiskDashboard selectedDate={selectedDate} />}
+      {page === "whatif"    && <WhatIfEngine selectedDate={selectedDate} />}
+      {page === "auditor"   && <LinkAuditor selectedDate={selectedDate} />}
     </div>
   );
 };
