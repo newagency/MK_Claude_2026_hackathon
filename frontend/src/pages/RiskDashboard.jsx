@@ -12,6 +12,9 @@ import {
   AlertTriangle,
   AlertCircle,
   CheckCircle2,
+  Newspaper,
+  Loader2,
+  ExternalLink,
 } from "lucide-react";
 
 const RISK = {
@@ -147,11 +150,113 @@ const CommodityCard = ({ item }) => {
   );
 };
 
+const IMPACT_STYLE = {
+  up:       { label: "상승 압력", color: "var(--risk-high)", bg: "var(--risk-high-bg)" },
+  down:     { label: "하락 요인", color: "var(--risk-low)",  bg: "var(--risk-low-bg)" },
+  unstable: { label: "불안정",    color: "var(--risk-med)",   bg: "var(--risk-med-bg)" },
+};
+
+const NewsMatchCard = ({ match }) => {
+  const impact = IMPACT_STYLE[match.impact] ?? IMPACT_STYLE.unstable;
+  return (
+    <div
+      className="rounded-xl p-4 space-y-2"
+      style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-sm font-bold leading-snug line-clamp-2" style={{ color: "var(--text-h)" }}>
+          {match.title}
+        </h3>
+        {match.article_url && (
+          <a href={match.article_url} target="_blank" rel="noreferrer" className="shrink-0 mt-0.5">
+            <ExternalLink size={12} style={{ color: "var(--text)", opacity: 0.4 }} />
+          </a>
+        )}
+      </div>
+      <p className="text-xs leading-relaxed line-clamp-2" style={{ color: "var(--text)", opacity: 0.7 }}>
+        {match.reason}
+      </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span
+          className="px-2 py-0.5 rounded-full text-xs font-bold"
+          style={{ color: impact.color, background: impact.bg }}
+        >
+          {impact.label}
+        </span>
+        {match.matched_commodities?.map((name) => (
+          <span
+            key={name}
+            className="px-2 py-0.5 rounded-full text-xs font-semibold"
+            style={{ background: "var(--accent-bg)", color: "var(--accent)", border: "1px solid var(--accent-border)" }}
+          >
+            {name}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const NewsPanel = ({ selectedDate }) => {
+  const [newsData, setNewsData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const dateStr = selectedDate.toISOString().slice(0, 10);
+
+  useEffect(() => {
+    setLoading(true);
+    setNewsData(null);
+    fetch(`/api/v1/news/daily?date=${dateStr}`)
+      .then((r) => { if (!r.ok) throw new Error("뉴스 로딩 실패"); return r.json(); })
+      .then(setNewsData)
+      .catch(() => setNewsData({ matches: [], total_articles: 0, filtered_count: 0 }))
+      .finally(() => setLoading(false));
+  }, [dateStr]);
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}
+    >
+      <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-2">
+          <Newspaper size={16} style={{ color: "var(--accent)" }} />
+          <span className="text-sm font-bold" style={{ color: "var(--text-h)" }}>
+            뉴스 기반 가격 영향 분석
+          </span>
+        </div>
+        {newsData && (
+          <span className="text-xs" style={{ color: "var(--text)", opacity: 0.5 }}>
+            {newsData.total_articles}건 중 {newsData.matches.length}건 매칭
+          </span>
+        )}
+      </div>
+
+      <div className="p-4 space-y-3" style={{ maxHeight: 480, overflowY: "auto" }}>
+        {loading && (
+          <div className="flex items-center justify-center py-10 gap-2">
+            <Loader2 size={16} className="animate-spin" style={{ color: "var(--accent)" }} />
+            <span className="text-sm" style={{ color: "var(--text)" }}>AI 분석 중...</span>
+          </div>
+        )}
+        {!loading && newsData?.matches.length === 0 && (
+          <p className="text-center text-sm py-8" style={{ color: "var(--text)", opacity: 0.5 }}>
+            이 날짜에 품목 가격에 영향을 주는 뉴스가 없습니다
+          </p>
+        )}
+        {!loading && newsData?.matches.map((m) => (
+          <NewsMatchCard key={m.article_id} match={m} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const SkeletonCard = () => (
   <div className="rounded-2xl h-52 animate-pulse" style={{ background: "var(--bg-subtle)" }} />
 );
 
-const RiskDashboard = () => {
+const RiskDashboard = ({ selectedDate }) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -235,8 +340,9 @@ const RiskDashboard = () => {
         </div>
       </div>
 
-      {/* Cards grid */}
-      <div className="max-w-5xl mx-auto px-5 py-7">
+      {/* Main content */}
+      <div className="max-w-5xl mx-auto px-5 py-7 space-y-7">
+        {/* Cards grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
@@ -246,6 +352,9 @@ const RiskDashboard = () => {
             ))
           )}
         </div>
+
+        {/* News matches */}
+        <NewsPanel selectedDate={selectedDate} />
       </div>
     </div>
   );

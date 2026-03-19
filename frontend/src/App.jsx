@@ -6,7 +6,7 @@ import LinkAuditor from "./pages/LinkAuditor";
 
 const App = () => {
   const [page, setPage] = useState("dashboard");
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date(2025, 2, 15));
 
   const shiftDate = (days) =>
     setSelectedDate((prev) => {
