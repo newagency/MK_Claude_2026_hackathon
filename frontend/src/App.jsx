@@ -21,6 +21,7 @@ const App = () => {
         page={page}
         setPage={setPage}
         selectedDate={selectedDate}
+        setSelectedDate={setSelectedDate}
         onPrevDate={() => shiftDate(-1)}
         onNextDate={() => shiftDate(1)}
       />

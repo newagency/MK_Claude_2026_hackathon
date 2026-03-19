@@ -6,24 +6,52 @@ const TABS = [
   { id: "auditor",   label: "뉴스 감사" },
 ];
 
-const isToday = (date) => {
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+const daysInMonth = (year, month) => new Date(year, month, 0).getDate();
+
+const clampToToday = (date) => {
   const now = new Date();
-  return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  );
+  return date > now ? now : date;
 };
 
-const formatDate = (date) => {
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
-  return `${mm}.${dd} (${weekdays[date.getDay()]})`;
-};
+const DateInput = ({ value, max, onChange }) => (
+  <input
+    type="text"
+    inputMode="numeric"
+    value={String(value).padStart(2, "0")}
+    onChange={(e) => {
+      const raw = e.target.value.replace(/\D/g, "");
+      if (raw === "") return;
+      const num = Math.min(Math.max(1, parseInt(raw, 10)), max);
+      onChange(num);
+    }}
+    onFocus={(e) => e.target.select()}
+    className="w-6 text-center text-xs font-semibold tabular-nums bg-transparent outline-none
+               rounded hover:bg-[var(--surface)] focus:bg-[var(--surface)] transition-colors"
+    style={{ color: "var(--text-h)" }}
+  />
+);
 
-const NavBar = ({ page, setPage, selectedDate, onPrevDate, onNextDate }) => {
-  const today = isToday(selectedDate);
+const NavBar = ({ page, setPage, selectedDate, setSelectedDate, onPrevDate, onNextDate }) => {
+  const mm = selectedDate.getMonth() + 1;
+  const dd = selectedDate.getDate();
+  const dayName = WEEKDAYS[selectedDate.getDay()];
+
+  const updateMonth = (newMonth) => {
+    const y = selectedDate.getFullYear();
+    const maxDay = daysInMonth(y, newMonth);
+    const d = Math.min(dd, maxDay);
+    setSelectedDate(clampToToday(new Date(y, newMonth - 1, d)));
+  };
+
+  const updateDay = (newDay) => {
+    const y = selectedDate.getFullYear();
+    const m = selectedDate.getMonth();
+    const maxDay = daysInMonth(y, m + 1);
+    const d = Math.min(newDay, maxDay);
+    setSelectedDate(clampToToday(new Date(y, m, d)));
+  };
 
   return (
     <nav
@@ -83,29 +111,28 @@ const NavBar = ({ page, setPage, selectedDate, onPrevDate, onNextDate }) => {
           <div className="h-4 w-px shrink-0" style={{ background: "var(--border)" }} />
 
           <div className="flex items-center gap-1">
-          <button
-            onClick={onPrevDate}
-            className="p-1 rounded-md transition-colors hover:bg-[var(--surface)]"
-            aria-label="이전 날짜"
-          >
-            <ChevronLeft size={16} style={{ color: "var(--text)", opacity: 0.6 }} />
-          </button>
+            <button
+              onClick={onPrevDate}
+              className="p-1 rounded-md transition-colors hover:bg-[var(--surface)]"
+              aria-label="이전 날짜"
+            >
+              <ChevronLeft size={16} style={{ color: "var(--text)", opacity: 0.6 }} />
+            </button>
 
-          <span
-            className="text-xs font-semibold tabular-nums min-w-[5.5rem] text-center select-none"
-            style={{ color: today ? "var(--accent)" : "var(--text-h)" }}
-          >
-            {today ? "오늘" : formatDate(selectedDate)}
-          </span>
+            <div className="flex items-center text-xs font-semibold" style={{ color: "var(--text-h)" }}>
+              <DateInput value={mm} max={12} onChange={updateMonth} />
+              <span className="select-none" style={{ opacity: 0.4 }}>.</span>
+              <DateInput value={dd} max={daysInMonth(selectedDate.getFullYear(), mm)} onChange={updateDay} />
+              <span className="ml-0.5 select-none" style={{ opacity: 0.4 }}>({dayName})</span>
+            </div>
 
-          <button
-            onClick={onNextDate}
-            disabled={today}
-            className="p-1 rounded-md transition-colors hover:bg-[var(--surface)] disabled:opacity-20 disabled:cursor-not-allowed"
-            aria-label="다음 날짜"
-          >
-            <ChevronRight size={16} style={{ color: "var(--text)", opacity: 0.6 }} />
-          </button>
+            <button
+              onClick={onNextDate}
+              className="p-1 rounded-md transition-colors hover:bg-[var(--surface)] disabled:opacity-20 disabled:cursor-not-allowed"
+              aria-label="다음 날짜"
+            >
+              <ChevronRight size={16} style={{ color: "var(--text)", opacity: 0.6 }} />
+            </button>
           </div>
         </div>
       </div>
