@@ -10,6 +10,24 @@ export default {
   theme: {
     extend: {
       colors: {
+        tremor: {
+          background: {
+            muted: "#f9fafb",   // gray-50
+            subtle: "#f3f4f6",  // gray-100
+            DEFAULT: "#ffffff", // white
+            emphasis: "#374151",// gray-700
+          },
+          border: {
+            DEFAULT: "#e5e7eb", // gray-200
+          },
+          content: {
+            subtle: "#9ca3af",
+            DEFAULT: "#6b7280",
+            emphasis: "#374151",
+            strong: "#111827",
+            inverted: "#ffffff",
+          },
+        },
         "brand-text": "#64748b",
         "brand-text-h": "#0f172a",
         "custom-bg": "var(--bg)", 
