@@ -80,6 +80,32 @@ docker compose exec -T db psql -U sosang -d sosang -c "\copy standard_prices(sta
 
 > `standard_prices` 테이블은 `db/init/01_schema.sql`에 정의돼 있으며, `docker compose up db` 시 자동 생성됩니다.
 
+### 4-2. 자동차경유 가격 CSV 적재
+
+`opinet_2025_prices_diesel.csv`를 적재하려면:
+
+```bash
+docker compose cp opinet_2025_prices_diesel.csv db:/app/opinet_2025_prices_diesel.csv
+
+docker compose exec -T db psql -U sosang -d sosang -c "TRUNCATE diesel_daily_prices;"
+docker compose exec -T db psql -U sosang -d sosang -c "\copy diesel_daily_prices(price_date,product_code,product_name,avg_price) FROM '/app/opinet_2025_prices_diesel.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
+```
+
+> `diesel_daily_prices`는 `db/init/01_schema.sql`에 포함되어 있으며, 날짜+제품코드 조합이 유니크합니다.
+
+### 4-3. USD 환율 CSV 적재
+
+`usd_rates_2025_filled.csv` 파일은 다음과 같이 적재합니다.
+
+```bash
+docker compose cp usd_rates_2025_filled.csv db:/app/usd_rates_2025_filled.csv
+
+docker compose exec -T db psql -U sosang -d sosang -c "TRUNCATE usd_daily_rates;"
+docker compose exec -T db psql -U sosang -d sosang -c "\copy usd_daily_rates(rate_date,currency_name,base_rate) FROM '/app/usd_rates_2025_filled.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
+```
+
+> `usd_daily_rates` 테이블은 휴일 포함 일별 환율을 저장하며 `rate_date`가 유니크합니다.
+
 적재 확인 — **저장소 루트로 돌아와서**:
 
 ```bash

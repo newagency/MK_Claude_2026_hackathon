@@ -80,3 +80,29 @@ CREATE TABLE IF NOT EXISTS standard_prices (
 
 CREATE INDEX IF NOT EXISTS idx_standard_prices_date_item
     ON standard_prices(stat_date, item_name);
+
+-- opinet 자동차경유 일별 평균가
+CREATE TABLE IF NOT EXISTS diesel_daily_prices (
+    id              BIGSERIAL    PRIMARY KEY,
+    price_date      DATE         NOT NULL,
+    product_code    TEXT         NOT NULL,
+    product_name    TEXT         NOT NULL,
+    avg_price       NUMERIC(10,2) NOT NULL,
+    created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    UNIQUE (price_date, product_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_diesel_prices_date
+    ON diesel_daily_prices(price_date);
+
+-- USD 환율 (휴일 포함, 직전 영업일 보정)
+CREATE TABLE IF NOT EXISTS usd_daily_rates (
+    id              BIGSERIAL    PRIMARY KEY,
+    rate_date       DATE         NOT NULL UNIQUE,
+    currency_name   TEXT         NOT NULL,
+    base_rate       NUMERIC(12,4) NOT NULL,
+    created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_usd_rates_date
+    ON usd_daily_rates(rate_date);
