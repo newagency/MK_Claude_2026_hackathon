@@ -1,11 +1,12 @@
 import { useState } from "react";
 import NavBar from "./components/NavBar";
+import HomePage from "./pages/HomePage";
 import RiskDashboard from "./pages/RiskDashboard";
 import WhatIfEngine from "./pages/WhatIfEngine";
 import LinkAuditor from "./pages/LinkAuditor";
 
 const App = () => {
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState("home");
   const [selectedDate, setSelectedDate] = useState(new Date(2025, 9, 2));
 
   const shiftDate = (days) =>
@@ -25,6 +26,7 @@ const App = () => {
         onPrevDate={() => shiftDate(-1)}
         onNextDate={() => shiftDate(1)}
       />
+      {page === "home"      && <HomePage selectedDate={selectedDate} onNavigate={setPage} />}
       {page === "dashboard" && <RiskDashboard selectedDate={selectedDate} />}
       {page === "whatif"    && <WhatIfEngine selectedDate={selectedDate} />}
       {page === "auditor"   && <LinkAuditor selectedDate={selectedDate} />}
