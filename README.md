@@ -52,26 +52,26 @@ MK_Claude_2026_hackathon/
 
 **실행 위치:** 아래에서 `docker compose`로 시작하는 모든 명령은 **이 저장소 루트**( `docker-compose.yml` 이 있는 폴더)에서 실행하세요. `cd db` 등으로 하위 폴더에 있으면 compose를 못 찾을 수 있습니다.
 
-### Step 1. 환경변수 설정
+### Step 1. Docker 백엔드용 `backend/.env` (저장소 루트에서)
+
+`docker compose`로 백엔드를 띄울 때만 이 파일을 읽습니다.
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-`backend/.env`를 열어 **`ANTHROPIC_API_KEY`를 실제 키로 바꿉니다.** (`sk-ant-...` 그대로 두면 LLM API가 동작하지 않습니다.) 나머지는 아래와 같이 맞추면 됩니다:
+`backend/.env` 내용 예시 — **`ANTHROPIC_API_KEY`만 본인 키로 바꾸고**, DB 줄은 **그대로 두면 됨** (`DB_HOST`는 Docker 안에서 DB 컨테이너 이름으로 붙는 값).
 
 ```dotenv
-ANTHROPIC_API_KEY=sk-ant-...   # 필수 - Anthropic API 키
-GARAK_API_KEY=                 # 선택
+ANTHROPIC_API_KEY=여기에_실제_키
+GARAK_API_KEY=
 
-DB_HOST=db                     # Docker Compose 사용 시 반드시 "db" (localhost 아님)
+DB_HOST=db
 DB_PORT=5432
 DB_NAME=sosang
 DB_USER=sosang
 DB_PASSWORD=sosang
 ```
-
-> **주의**: `DB_HOST`는 반드시 `db`로 설정하세요. Docker 컨테이너끼리는 서비스명으로 통신합니다. `localhost`로 설정하면 뉴스 API 등이 동작하지 않습니다.
 
 ### Step 2. 데이터 디렉토리 준비
 
@@ -95,51 +95,59 @@ mkdir -p data
 docker compose up backend db --build -d
 ```
 
+- 백엔드 컨테이너는 **Step 1의 `backend/.env`** 를 읽습니다 → 그 안의 `DB_HOST=db` 로 DB 컨테이너에 붙습니다.
 - 최초(또는 `docker compose down -v` 이후)에는 `db/init/01_schema.sql`만 자동 적용됩니다.
 - **테이블은 생기지만 `news_articles` 등 데이터는 비어 있습니다.** 뉴스 탭/API를 쓰려면 Step 3-보강을 한 번 해야 합니다.
 - 이미 적재해 둔 Docker 볼륨(`postgres_data`)이 있으면 Step 3-보강은 생략 가능합니다.
 
-### Step 3-보강. (최초 1회) 뉴스 DB 적재
+### Step 3-보강. (최초 1회) 뉴스 DB 적재 — **PC 터미널**에서
 
-**선행 조건:** Step 3까지 끝내서 `db` 컨테이너가 떠 있고, 포트 `5432`가 막히지 않았을 것.
+**먼저:** Step 3으로 Postgres 컨테이너가 떠 있고, 맥/윈도우에서 `localhost:5432`로 붙을 수 있어야 합니다.
 
-호스트에서 스크립트를 돌릴 때는 DB에 **localhost:5432**로 붙습니다. (`backend/.env`의 `DB_HOST=db`와 별개입니다.)
-
-macOS / Linux:
+**폴더 `db/`** 로 들어가서(저장소 안의 디렉터리 이름) 한 번만 venv 준비:
 
 ```bash
 cd db
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate          # Windows PowerShell: .\.venv\Scripts\Activate.ps1
 pip install psycopg2-binary
-
-export DB_HOST=localhost DB_PORT=5432 DB_NAME=sosang DB_USER=sosang DB_PASSWORD=sosang
-
-python load_data.py categories mk_news_categories.json
-python load_data.py articles /path/to/2025    # 실제 뉴스 JSON 상위 경로로 변경
 ```
 
-Windows (PowerShell)에서는 `export` 대신:
+이제 **`load_data.py`를 칠 때마다** 앞에 `DB_HOST=localhost`를 붙입니다.  
+(`backend/.env`는 건드리지 않음. Docker 백엔드는 계속 `DB_HOST=db`.)
+
+**macOS / Linux** — 한 줄씩 그대로 실행 (경로만 본인 뉴스 폴더로):
+
+```bash
+cd db
+source .venv/bin/activate
+
+DB_HOST=localhost DB_PORT=5432 DB_NAME=sosang DB_USER=sosang DB_PASSWORD=sosang \
+  python load_data.py categories mk_news_categories.json
+
+DB_HOST=localhost DB_PORT=5432 DB_NAME=sosang DB_USER=sosang DB_PASSWORD=sosang \
+  python load_data.py articles /path/to/2025
+```
+
+**Windows PowerShell** — `python` 치기 **직전**에 아래 한 줄을 붙여넣고, 바로 이어서 `python ...` 실행 (카테고리·기사 각각 한 번씩):
 
 ```powershell
 cd db
-python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install psycopg2-binary
 
-$env:DB_HOST="localhost"; $env:DB_PORT="5432"; $env:DB_NAME="sosang"; $env:DB_USER="sosang"; $env:DB_PASSWORD="sosang"
-
+$env:DB_HOST='localhost'; $env:DB_PORT='5432'; $env:DB_NAME='sosang'; $env:DB_USER='sosang'; $env:DB_PASSWORD='sosang'
 python load_data.py categories mk_news_categories.json
+
+$env:DB_HOST='localhost'; $env:DB_PORT='5432'; $env:DB_NAME='sosang'; $env:DB_USER='sosang'; $env:DB_PASSWORD='sosang'
 python load_data.py articles C:\path\to\2025
 ```
 
-> `backend/.venv`가 있고 `psycopg2-binary`가 깔려 있으면 `db` 대신 그 venv를 써도 됩니다.  
-> 전체 기사 적재는 약 5~10분 걸릴 수 있습니다.
+> `backend/.venv`에 `psycopg2-binary`가 있으면 `db/.venv` 대신 그걸 켜도 됩니다. **`python` 앞의 `DB_HOST=localhost ...` 패턴만 유지**하면 됩니다.
 
-적재 확인 (**반드시 저장소 루트로 이동한 뒤**):
+적재 확인 — **저장소 루트**로 온 뒤:
 
 ```bash
-cd ..    # db 폴더에 있다면 루트로
+cd ..                              # 지금 db/ 안에 있다면
 docker compose exec db psql -U sosang -c "SELECT count(*) FROM news_articles;"
 ```
 
@@ -177,19 +185,21 @@ docker compose up backend db --build -d
 
 `docker compose down -v`로 DB를 비운 뒤에는 Step 3부터 다시 하고, **Step 3-보강**을 반복하면 됩니다. 볼륨을 지우지 않았다면 재적재할 필요 없습니다.
 
-## 환경변수
+## 환경변수 (어디에 쓰이는지)
 
-`backend/.env` 파일에 설정합니다.
+| 쓰는 곳 | 파일/방식 | DB 접속 |
+|---------|-----------|---------|
+| `docker compose up backend` | `backend/.env` | `DB_HOST=db` (컨테이너끼리 통신) |
+| `python load_data.py ...` (맥/리눅스) | 명령 **앞**에 붙임 | `DB_HOST=localhost ... python ...` (Step 3-보강 참고) |
+| `python load_data.py ...` (PowerShell) | `python` 직전 `$env:DB_HOST='localhost'` … | Step 3-보강 참고 |
 
-| 변수 | Docker 값 | 설명 |
-|------|-----------|------|
-| `ANTHROPIC_API_KEY` | (필수 입력) | Anthropic API 키 |
-| `GARAK_API_KEY` | — | 가락시장 도매가 API 키 (선택) |
-| `DB_HOST` | **`db`** | Backend **컨테이너** 안에서 DB 접속: `db`. 호스트에서 `load_data.py` 실행 시: `localhost` |
-| `DB_PORT` | `5432` | PostgreSQL 포트 |
-| `DB_NAME` | `sosang` | 데이터베이스 이름 |
-| `DB_USER` | `sosang` | DB 사용자 |
-| `DB_PASSWORD` | `sosang` | DB 비밀번호 |
+`backend/.env` 나머지 키:
+
+| 변수 | 설명 |
+|------|------|
+| `ANTHROPIC_API_KEY` | 필수 — LLM |
+| `GARAK_API_KEY` | 선택 — 가락 API |
+| `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | compose 기본값과 동일하면 그대로 |
 
 ## API 엔드포인트
 
@@ -222,7 +232,8 @@ docker compose up backend db --build -d
 | 원자재 대시보드 | `data/mock_garak_5years.json`을 **직접 준비**해야 함 (저장소에 없을 수 있음) |
 | 일별 뉴스·LLM 매칭 | **Step 3-보강 + 실제 뉴스 JSON 경로** 없으면 DB가 비어 있음 |
 | API 키 | `ANTHROPIC_API_KEY`를 **실제 값**으로 교체해야 LLM 호출 성공 |
-| `cp .env.example` 후 Docker 백엔드 | `DB_HOST=db` — `.env.example`과 일치 |
+| Docker 백엔드 | `backend/.env`에 `DB_HOST=db` |
+| 뉴스 적재 | `python` 실행 줄에만 `DB_HOST=localhost` (`.env` 수정 불필요) |
 | 첫 기동 직후 | DB가 준비될 때까지 수 초 걸릴 수 있음; 백엔드가 한두 번 연결 실패 후 정상일 수 있음 |
 
 ## DB 접속 확인
