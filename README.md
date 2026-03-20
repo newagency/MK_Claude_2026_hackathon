@@ -65,6 +65,21 @@ DB_HOST=localhost python load_data.py articles /path/to/2025
 > `/path/to/2025`를 실제 뉴스 JSON 폴더 경로로 바꿔주세요.
 > 전체 적재는 약 5~10분 걸립니다.
 
+### 4-1. 표준 가격 CSV 적재
+
+`2025_standard_prices_filtered.csv`를 DB에 넣고 싶다면 다음 순서로 진행하세요.
+
+```bash
+# 저장소 루트에서 CSV를 컨테이너로 복사
+docker compose cp 2025_standard_prices_filtered.csv db:/app/2025_standard_prices_filtered.csv
+
+# 기존 데이터 초기화 후 CSV 적재
+docker compose exec -T db psql -U sosang -d sosang -c "TRUNCATE standard_prices;"
+docker compose exec -T db psql -U sosang -d sosang -c "\copy standard_prices(stat_date,item_name,variety_name,grade_name,price_per_kg) FROM '/app/2025_standard_prices_filtered.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')"
+```
+
+> `standard_prices` 테이블은 `db/init/01_schema.sql`에 정의돼 있으며, `docker compose up db` 시 자동 생성됩니다.
+
 적재 확인 — **저장소 루트로 돌아와서**:
 
 ```bash
