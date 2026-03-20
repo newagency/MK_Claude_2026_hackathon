@@ -3,9 +3,17 @@ import logging
 from collections import OrderedDict
 
 from fastapi import APIRouter, Query
-from app.services.news.fetcher import fetch_news_by_date, filter_relevant
-from app.services.news.matcher import match_news
-from app.services.llm.briefing import generate_briefs
+from app.services.risk.pipeline import (
+    load_or_create_brief_response,
+    load_or_create_daily_news_analysis,
+)
+from app.services.risk.config import (
+    ANALYSIS_VERSION,
+    MATCHER_VERSION,
+    RELEVANCE_VERSION,
+    SCORER_VERSION,
+    TREND_SUMMARY_PROMPT_VERSION,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -31,21 +39,13 @@ def _put_cache(key: str, data: dict):
 
 
 def _run_match_pipeline(date: str) -> dict:
-    """fetch → filter → match. 결과를 캐시하여 daily/brief 양쪽에서 재사용."""
-    cache_key = f"match:{date}"
+    """DB snapshot miss 시에만 daily news analysis를 생성한다."""
+    cache_key = f"match:{date}:{MATCHER_VERSION}:{RELEVANCE_VERSION}"
     cached = _get_cached(cache_key)
     if cached:
         return cached
 
-    all_articles = fetch_news_by_date(date)
-    filtered = filter_relevant(all_articles, date)
-    matches = match_news(filtered)
-
-    result = {
-        "total_articles": len(all_articles),
-        "filtered_count": len(filtered),
-        "matches": matches,
-    }
+    result = load_or_create_daily_news_analysis(date)
     _put_cache(cache_key, result)
     return result
 
@@ -56,20 +56,13 @@ def get_daily_news(date: str = Query(..., description="YYYY-MM-DD")):
     Step 1: 뉴스별 짧은 분석 (한줄 reason)
     기사를 가져와서 품목에 매칭하고, 기사별 한줄 분석을 반환합니다.
     """
-    cache_key = f"daily:{date}"
+    cache_key = f"daily:{date}:{MATCHER_VERSION}:{RELEVANCE_VERSION}"
     cached = _get_cached(cache_key)
     if cached:
         logger.info("daily cache hit: %s", date)
         return cached
 
-    pipeline = _run_match_pipeline(date)
-
-    result = {
-        "date": date,
-        "total_articles": pipeline["total_articles"],
-        "filtered_count": pipeline["filtered_count"],
-        "matches": pipeline["matches"],
-    }
+    result = _run_match_pipeline(date)
     _put_cache(cache_key, result)
     return result
 
@@ -81,19 +74,12 @@ def get_daily_briefs(date: str = Query(..., description="YYYY-MM-DD")):
     그날의 매칭 기사를 품목별로 종합하여 공급망 리스크 분석을 생성합니다.
     매칭 기사가 없는 품목은 건너뜁니다 (억지 분석 없음).
     """
-    cache_key = f"brief:{date}"
+    cache_key = f"brief:{date}:{SCORER_VERSION}:{ANALYSIS_VERSION}:{RELEVANCE_VERSION}:{TREND_SUMMARY_PROMPT_VERSION}"
     cached = _get_cached(cache_key)
     if cached:
         logger.info("brief cache hit: %s", date)
         return cached
 
-    pipeline = _run_match_pipeline(date)
-    briefs = generate_briefs(pipeline["matches"], date)
-
-    result = {
-        "date": date,
-        "commodity_count": len(briefs),
-        "briefs": briefs,
-    }
+    result = load_or_create_brief_response(date)
     _put_cache(cache_key, result)
     return result

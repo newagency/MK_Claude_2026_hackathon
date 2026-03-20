@@ -20,7 +20,7 @@ import {
   Link2,
   X,
 } from "lucide-react";
-import { MOCK_COMMODITY_SUMMARIES, MOCK_HIGH_RISK_DETAILS } from "../data/mockCommodities";
+import { MOCK_COMMODITY_SUMMARIES } from "../data/mockCommodities";
 
 const RISK = {
   high: { label: "고위험", color: "var(--risk-high)", bg: "var(--risk-high-bg)" },
@@ -46,6 +46,7 @@ const IMPACT_STYLE = {
 };
 
 const FALLBACK_PRIORITY = { high: 90, medium: 60, low: 30 };
+const UI_TIER_TO_LEVEL = { stable: "low", caution: "medium", high: "high" };
 
 const TIER_STYLE = {
   T0: { label: "무시", color: "#94a3b8", bg: "#f1f5f9" },
@@ -73,12 +74,21 @@ const SCM_STAGE_LABEL = {
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 const toNumber = (v, fb = 0) => { const n = Number(v); return Number.isFinite(n) ? n : fb; };
 const normalizeRiskLevel = (v) => (v === "high" || v === "medium" || v === "low" ? v : "low");
+const normalizeUiRiskTier = (v) => (v === "stable" || v === "caution" || v === "high" ? v : "");
 const formatDateLabel = (v) => {
   const raw = String(v ?? "").trim();
   if (!raw) return "";
   if (/^\d{8}$/.test(raw)) return `${raw.slice(0, 4)}.${raw.slice(4, 6)}.${raw.slice(6, 8)}`;
   if (/^\d{4}$/.test(raw)) return `${raw.slice(0, 2)}.${raw.slice(2, 4)}`;
   return raw.replaceAll("-", ".");
+};
+
+const formatApiDate = (value) => {
+  const date = value instanceof Date ? value : new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
 const normalizeChartData = (entries) => {
@@ -107,7 +117,7 @@ const buildTrendSummary = ({ commodityName, avgReferencePrice, priceDeltaPct, no
   const d = toNumber(priceDeltaPct);
   const dir = d > 0 ? "높은 수준" : d < 0 ? "낮은 수준" : "유사한 수준";
   const base = `${commodityName} 가격은 3년 평균 ${Math.round(toNumber(avgReferencePrice)).toLocaleString()}원 대비 ${Math.abs(d).toFixed(1)}% ${dir}입니다.`;
-  if (rocketFeather?.is_feather) {
+  if (rocketFeather?.isFeather || rocketFeather?.is_feather) {
     return `${base} 최근 상승 속도가 하락 속도보다 ${toNumber(rocketFeather.asymmetry_ratio ?? rocketFeather.asymmetryRatio, 2).toFixed(1)}배 빨라 유통 단계의 과잉 전가 여부도 함께 점검해야 합니다.`;
   }
   return `${base} 최근 수급과 물류 변수에 대한 민감도가 커진 구간입니다.`;
@@ -116,16 +126,39 @@ const buildTrendSummary = ({ commodityName, avgReferencePrice, priceDeltaPct, no
 const inferRiskScore = ({ riskScore, riskLevel, priceDeltaPct, rocketFeather }) => {
   if (Number.isFinite(Number(riskScore))) return Number(riskScore);
   const base = { high: 78, medium: 54, low: 28 }[normalizeRiskLevel(riskLevel)];
-  return Math.round(base + Math.min(14, Math.abs(toNumber(priceDeltaPct)) / 2) + (rocketFeather?.is_feather ? 6 : 0));
+  return Math.round(base + Math.min(14, Math.abs(toNumber(priceDeltaPct)) / 2) + ((rocketFeather?.isFeather || rocketFeather?.is_feather) ? 6 : 0));
 };
 
 const normalizeCommodity = (raw, index) => {
   const chartData = normalizeChartData(raw.chartData ?? raw.trend);
-  const riskLevel = normalizeRiskLevel(raw.riskLevel ?? raw.greedflation_risk);
-  const rocketFeather = raw.rocketFeather ?? raw.rocket_feather ?? null;
+  const uiRiskTier = normalizeUiRiskTier(raw.riskTier ?? raw.risk_tier);
+  const tierBackedRiskLevel = uiRiskTier ? UI_TIER_TO_LEVEL[uiRiskTier] : "";
+  const sourceRiskLevel = tierBackedRiskLevel || raw.riskLevel || raw.greedflation_risk;
+  const riskLevel = normalizeRiskLevel(sourceRiskLevel);
+  const rawRocketFeather = raw.rocketFeather ?? raw.rocket_feather ?? null;
+  const rocketFeather = rawRocketFeather
+    ? {
+        isFeather: Boolean(rawRocketFeather.isFeather ?? rawRocketFeather.is_feather),
+        upVelocity: toNumber(rawRocketFeather.upVelocity ?? rawRocketFeather.up_velocity),
+        downVelocity: toNumber(rawRocketFeather.downVelocity ?? rawRocketFeather.down_velocity),
+        asymmetryRatio: toNumber(rawRocketFeather.asymmetryRatio ?? rawRocketFeather.asymmetry_ratio, 1),
+      }
+    : null;
   const priceDeltaPct = toNumber(raw.priceDeltaPct ?? raw.price_delta_pct);
   const avgReferencePrice = toNumber(raw.avgReferencePrice ?? raw.avg_3year);
   const commodityName = String(raw.commodityName ?? raw.item_name ?? raw.name ?? `품목 ${index + 1}`);
+  const backendActionGuides = Array.isArray(raw.actionGuides ?? raw.action_guides) ? (raw.actionGuides ?? raw.action_guides) : [];
+  const actionGuides = uiRiskTier === "stable" ? [] : backendActionGuides;
+  const resolvedRiskScore = Number.isFinite(Number(raw.riskScore ?? raw.risk_score))
+    ? Number(raw.riskScore ?? raw.risk_score)
+    : inferRiskScore({ riskScore: raw.riskScore ?? raw.risk_score, riskLevel, priceDeltaPct, rocketFeather });
+  const resolvedTrendSummary = buildTrendSummary({
+    commodityName,
+    avgReferencePrice,
+    priceDeltaPct,
+    note: raw.trendSummary ?? raw.trend_summary ?? raw.note,
+    rocketFeather,
+  });
   return {
     id: String(raw.id ?? raw.item_code ?? raw.itemId ?? index),
     commodityName,
@@ -133,14 +166,20 @@ const normalizeCommodity = (raw, index) => {
     currentPrice: toNumber(raw.currentPrice ?? raw.current_price),
     priceUnit: String(raw.priceUnit ?? raw.unit ?? "원"),
     trendDirection: inferTrendDirection({ trendDirection: raw.trendDirection, priceDeltaPct, chartData }),
-    trendSummary: buildTrendSummary({ commodityName, avgReferencePrice, priceDeltaPct, note: raw.trendSummary ?? raw.note, rocketFeather }),
+    trendSummary: resolvedTrendSummary,
     riskLevel,
-    riskScore: inferRiskScore({ riskScore: raw.riskScore ?? raw.risk_score, riskLevel, priceDeltaPct, rocketFeather }),
+    riskScore: resolvedRiskScore,
     chartData,
     avgReferencePrice,
     priceDeltaPct,
-    note: String(raw.note ?? "").trim(),
+    note: String(raw.note ?? resolvedTrendSummary).trim(),
     rocketFeather,
+    actionGuides,
+    actionPolicyTier: String(raw.actionPolicyTier ?? raw.action_policy_tier ?? "").trim(),
+    uiRiskTier,
+    evidenceRefs: Array.isArray(raw.evidence_refs ?? raw.evidenceRefs) ? (raw.evidence_refs ?? raw.evidenceRefs) : [],
+    relevanceJudgmentSummary: String(raw.relevance_judgment_summary ?? raw.relevanceJudgmentSummary ?? "").trim(),
+    validationIssues: Array.isArray(raw.validation_issues ?? raw.validationIssues) ? (raw.validation_issues ?? raw.validationIssues) : [],
     originalIndex: index,
   };
 };
@@ -165,16 +204,16 @@ const withTimeout = (promise, ms) =>
     );
   });
 
-const fetchCommoditySummaries = async (signal) => {
-  const r = await fetch("/api/v1/commodities", { signal });
+const fetchCommoditySummaries = async (dateStr, signal) => {
+  const r = await fetch(`/api/v1/commodities?date=${encodeURIComponent(dateStr)}`, { signal });
   if (!r.ok) throw new Error("서버 오류");
   return r.json();
 };
 
-const loadDashboardViewModel = async (signal) => {
+const loadDashboardViewModel = async (dateStr, signal) => {
   let summaryRaw;
   try {
-    summaryRaw = await withTimeout(fetchCommoditySummaries(signal), 1500);
+    summaryRaw = await withTimeout(fetchCommoditySummaries(dateStr, signal), 1500);
   } catch (e) {
     if (e?.name === "AbortError") throw e;
     return buildMockDashboardViewModel();
@@ -262,6 +301,7 @@ const CommodityCard = ({ item, onOpenDetail }) => {
   const risk = RISK[item.riskLevel] ?? RISK.low;
   const Icon = COMMODITY_ICONS[item.commodityName] ?? Package;
   const isUp = item.priceDeltaPct > 0;
+  const hasActionGuide = item.actionGuides.length > 0;
 
   return (
     <button
@@ -330,16 +370,24 @@ const CommodityCard = ({ item, onOpenDetail }) => {
         {item.rocketFeather?.isFeather && (
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold" style={{ background: "var(--risk-high-bg)", color: "var(--risk-high)" }}>
             <AlertTriangle size={12} />
-            <span>하락 대비 {toNumber(item.rocketFeather.asymmetryRatio, 0).toFixed(1)}배 속도로 상승</span>
+            <span>하락  대비 {toNumber(item.rocketFeather.asymmetryRatio, 0).toFixed(1)}배 속도로 상승</span>
           </div>
         )}
 
         {/* Row 5: CTA */}
-        <div className="mt-auto flex items-center justify-between px-2.5 py-1.5 rounded-lg"
-          style={{ background: `linear-gradient(135deg, ${risk.bg}, rgba(248,250,252,0.6))`, border: `1px solid ${risk.color}22`, color: risk.color }}>
+        <div
+          className="mt-auto flex items-center justify-between px-2.5 py-1.5 rounded-lg"
+          style={{
+            background: hasActionGuide
+              ? `linear-gradient(135deg, ${risk.bg}, rgba(248,250,252,0.6))`
+              : "var(--bg-subtle)",
+            border: hasActionGuide ? `1px solid ${risk.color}22` : "1px solid var(--border)",
+            color: hasActionGuide ? risk.color : "var(--text)",
+          }}
+        >
           <div className="flex items-center gap-1.5 text-[11px] font-bold">
             <ShieldCheck size={12} />
-            상세 분석 보기
+            {hasActionGuide ? "행동 가이드 포함" : "시장 / 뉴스 근거 보기"}
           </div>
           <ChevronRight size={12} />
         </div>
@@ -658,18 +706,18 @@ const RiskDashboard = ({ selectedDate }) => {
   const [briefLoading, setBriefLoading] = useState(false);
 
   const safeDate = selectedDate instanceof Date ? selectedDate : new Date(2025, 9, 2);
-  const dateStr = safeDate.toISOString().slice(0, 10);
+  const dateStr = formatApiDate(safeDate);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    loadDashboardViewModel(controller.signal)
+    loadDashboardViewModel(dateStr, controller.signal)
       .then(setData)
       .catch((e) => { if (e?.name !== "AbortError") setError(e.message); })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, []);
+  }, [dateStr]);
 
   // Prefetch news daily
   useEffect(() => {

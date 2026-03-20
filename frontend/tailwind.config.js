@@ -1,5 +1,3 @@
-import headlessui from "@headlessui/tailwindcss";
-
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -39,5 +37,5 @@ export default {
       pattern: /^(stroke|fill|bg|text)-(indigo|cyan|amber|rose|emerald|teal|violet|lime|pink|gray)-(500)$/,
     },
   ],
-  plugins: [headlessui],
+  plugins: [],
 };

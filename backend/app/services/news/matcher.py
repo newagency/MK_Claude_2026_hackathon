@@ -21,6 +21,77 @@ from .config import (
 
 load_dotenv()
 
+DIRECT_KEYWORDS = [
+    "공급 차질",
+    "수입 금지",
+    "수입 제한",
+    "작황 부진",
+    "질병",
+    "살처분",
+    "단가 인상",
+    "검역",
+    "부족",
+]
+
+PROXY_KEYWORDS = [
+    "환율",
+    "원달러",
+    "유가",
+    "운임",
+    "물류비",
+    "관세",
+    "통상",
+    "에너지",
+]
+
+
+def _keyword_matches(article: dict) -> list[str]:
+    text = f"{article.get('title', '')} {article.get('summary', '')}"
+    matched = []
+    for commodity in TRACKED_COMMODITIES:
+        if any(keyword in text for keyword in commodity["keywords"]):
+            matched.append(commodity["name"])
+    return matched
+
+
+def _heuristic_impact_and_severity(article: dict) -> tuple[str, int]:
+    text = f"{article.get('title', '')} {article.get('summary', '')}"
+    has_direct = any(keyword in text for keyword in DIRECT_KEYWORDS)
+    has_proxy = any(keyword in text for keyword in PROXY_KEYWORDS)
+
+    if has_direct:
+        return "up", 7
+    if has_proxy:
+        return "unstable", 4
+    return "unstable", 3
+
+
+def _heuristic_reason(article: dict, matched: list[str], severity: int) -> str:
+    joined = ", ".join(matched)
+    return f"{joined} 관련 키워드가 기사 제목/요약에 직접 등장했고, 현재 기사 강도를 {severity}/10으로 추정했습니다."
+
+
+def _heuristic_match_batch(articles: list[dict]) -> list[dict]:
+    results = []
+    for article in articles:
+        matched = _keyword_matches(article)
+        if not matched:
+            continue
+        impact, severity = _heuristic_impact_and_severity(article)
+        if severity < MIN_SEVERITY:
+            continue
+        results.append({
+            "article_id": article.get("article_id"),
+            "title": article.get("title", ""),
+            "summary": article.get("summary", ""),
+            "article_url": article.get("article_url", ""),
+            "matched_commodities": matched,
+            "reason": _heuristic_reason(article, matched, severity),
+            "impact": impact,
+            "severity": severity,
+        })
+    return results
+
 
 def _build_system_prompt() -> str:
     commodity_list = ", ".join(c["name"] for c in TRACKED_COMMODITIES)
@@ -38,16 +109,23 @@ def _build_user_message(articles: list[dict]) -> str:
 
 
 def _call_llm(articles: list[dict]) -> list[dict]:
-    client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return _heuristic_match_batch(articles)
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=4096,
-        system=_build_system_prompt(),
-        messages=[
-            {"role": "user", "content": _build_user_message(articles)},
-        ],
-    )
+    client = Anthropic(api_key=api_key)
+
+    try:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=4096,
+            system=_build_system_prompt(),
+            messages=[
+                {"role": "user", "content": _build_user_message(articles)},
+            ],
+        )
+    except Exception:
+        return _heuristic_match_batch(articles)
 
     raw = response.content[0].text.strip()
 
@@ -58,7 +136,7 @@ def _call_llm(articles: list[dict]) -> list[dict]:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        return []
+        return _heuristic_match_batch(articles)
 
 
 def match_news(articles: list[dict]) -> list[dict]:
@@ -88,6 +166,8 @@ def match_news(articles: list[dict]) -> list[dict]:
     for i in range(0, len(articles), BATCH_SIZE):
         batch = articles[i : i + BATCH_SIZE]
         raw_matches = _call_llm(batch)
+        if not raw_matches:
+            raw_matches = _heuristic_match_batch(batch)
 
         for m in raw_matches:
             if not isinstance(m, dict):

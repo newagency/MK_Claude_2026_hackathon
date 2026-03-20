@@ -1,85 +1,71 @@
-from collections import defaultdict
-from fastapi import APIRouter
-from app.services.collectors.mock_loader import MockGarakLoader
-from app.services.collectors.fair_price import PriceForensics
+from __future__ import annotations
+
+from datetime import date as date_type
+
+from fastapi import APIRouter, Query
+
+from app.services.commodity_market import load_market_commodity_cards
+from app.services.risk.pipeline import load_or_create_risk_snapshots
 
 router = APIRouter()
 
-COMMODITY_META = {
-    "egg":    {"name": "계란",   "emoji": "🥚", "en": "Egg"},
-    "pork":   {"name": "돼지",   "emoji": "🐷", "en": "Pork"},
-    "apple":  {"name": "사과",   "emoji": "🍎", "en": "Apple"},
-    "rice":   {"name": "쌀",     "emoji": "🌾", "en": "Rice"},
-    "salt":   {"name": "천일염", "emoji": "🧂", "en": "Sea Salt"},
-    "garlic": {"name": "피마늘", "emoji": "🧄", "en": "Garlic"},
+UI_RISK_TO_CARD = {
+    "stable": "low",
+    "caution": "medium",
+    "high": "high",
 }
 
-GARAK_CODE_MAP = {
-    "111": "rice",
-}
+
+def _overlay_snapshot(base_card: dict, snapshot: dict) -> dict:
+    risk_level = UI_RISK_TO_CARD.get(snapshot["risk_tier"], base_card.get("greedflation_risk", "low"))
+    next_card = dict(base_card)
+    next_card["riskScore"] = int(snapshot["risk_score"])
+    next_card["greedflation_risk"] = risk_level
+    next_card["risk_tier"] = snapshot["risk_tier"]
+    next_card["action_policy_tier"] = snapshot["action_policy_tier"]
+    next_card["score_breakdown"] = snapshot["score_breakdown"]
+    next_card["trendSummary"] = snapshot.get("trend_summary") or snapshot["scm_risk_summary"] or base_card.get("note", "")
+    next_card["note"] = next_card["trendSummary"]
+    next_card["action_guides"] = snapshot["action_guides"]
+    next_card["evidence_refs"] = snapshot["evidence_refs"]
+    next_card["relevance_judgment_summary"] = snapshot.get("relevance_judgment_summary", "")
+    next_card["relevance_version"] = snapshot.get("relevance_version", "")
+    next_card["validation_issues"] = snapshot.get("validation_issues", [])
+    next_card["analysis_versions"] = {
+        "scorer_version": snapshot["scorer_version"],
+        "policy_version": snapshot["policy_version"],
+        "prompt_version": snapshot["prompt_version"],
+        "relevance_version": snapshot.get("relevance_version", ""),
+        "analysis_version": snapshot["analysis_version"],
+        "trend_summary_prompt_version": snapshot.get("trend_summary_prompt_version", ""),
+        "trend_summary_model": snapshot.get("trend_summary_model", ""),
+    }
+    return next_card
 
 
 @router.get("/commodities")
-def get_commodities_overview():
-    """
-    Returns current vs. 3-year-average prices and rocket-feather analysis
-    for tracked commodities only, sorted by price deviation (highest first).
-    """
-    data = MockGarakLoader.get_5year_data()
+def get_commodities_overview(
+    date: date_type | None = Query(None, description="YYYY-MM-DD"),
+):
+    requested_date = date if isinstance(date, date_type) else None
+    market_cards = load_market_commodity_cards(requested_date)
+    if not market_cards:
+        return []
 
-    groups: dict[str, list] = defaultdict(list)
-    for entry in data:
-        raw_code = entry["item_code"]
-        mapped = GARAK_CODE_MAP.get(raw_code)
-        if mapped:
-            groups[mapped].append(entry)
+    target_date = max((card.get("latest_date") or "" for card in market_cards), default="")
+    snapshots = load_or_create_risk_snapshots(target_date) if target_date else []
+    snapshot_by_code = {snapshot["commodity_id"]: snapshot for snapshot in snapshots}
 
-    result = []
-    for code, entries in groups.items():
-        meta = COMMODITY_META.get(code)
-        if not meta:
-            continue
+    merged = []
+    for card in market_cards:
+        snapshot = snapshot_by_code.get(card["item_code"])
+        merged.append(_overlay_snapshot(card, snapshot) if snapshot else card)
 
-        sorted_entries = sorted(entries, key=lambda x: x["search_date"])
-        latest = sorted_entries[-1]
-
-        valid = [e for e in entries if e.get("avg_price_y1", 0) > 0]
-        if valid:
-            avg_3year = sum(
-                (e["avg_price_y1"] + e["avg_price_y2"] + e["avg_price_y3"]) / 3
-                for e in valid
-            ) / len(valid)
-        else:
-            avg_3year = latest["avg_price_current"]
-
-        current = latest["avg_price_current"]
-        delta_pct = round((current - avg_3year) / avg_3year * 100, 1)
-
-        rocket_feather = PriceForensics.detect_rocket_feather(sorted_entries)
-
-        if delta_pct > 20 or rocket_feather["is_feather"]:
-            risk = "high"
-        elif delta_pct > 8:
-            risk = "medium"
-        else:
-            risk = "low"
-
-        result.append({
-            "item_code": code,
-            "item_name": meta["name"],
-            "emoji": meta["emoji"],
-            "en_name": meta["en"],
-            "unit": latest["unit"],
-            "current_price": current,
-            "avg_3year": int(avg_3year),
-            "price_delta_pct": delta_pct,
-            "greedflation_risk": risk,
-            "rocket_feather": rocket_feather,
-            "trend": [
-                {"date": e["search_date"][4:], "price": e["avg_price_current"]}
-                for e in sorted_entries
-            ],
-            "note": latest.get("note", ""),
-        })
-
-    return sorted(result, key=lambda x: abs(x["price_delta_pct"]), reverse=True)
+    return sorted(
+        merged,
+        key=lambda item: (
+            -int(item.get("riskScore", 0)),
+            -abs(float(item.get("price_delta_pct", 0))),
+            item.get("item_name", ""),
+        ),
+    )
