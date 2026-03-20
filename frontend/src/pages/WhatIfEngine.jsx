@@ -65,22 +65,42 @@ const Slider = ({ id, label, sublabel, unit, min, max, step, value, onChange, ba
 };
 
 // Simplified local calculation for live preview
+const DEMO_ITEMS = [
+  { key: "Egg", label: "계란", base: 1400, weights: { fx: 0.45, oil: 0.12, wage: 0.15 } },
+  { key: "Pork", label: "돼지", base: 2500, weights: { fx: 0.65, oil: 0.1, wage: 0.25 } },
+  { key: "Rice", label: "쌀", base: 1200, weights: { fx: 0.1, oil: 0.15, wage: 0.2 } },
+  { key: "Apple", label: "사과", base: 3000, weights: { fx: 0.2, oil: 0.6, wage: 0.4 } },
+  { key: "Salt", label: "천일염", base: 2300, weights: { fx: 0.05, oil: 0.35, wage: 0.6 } },
+  { key: "Garlic", label: "피마늘", base: 4500, weights: { fx: 0.4, oil: 0.25, wage: 0.55 } },
+];
+
 const runFakeSim = (inputs) => {
   const ex_rate_eff = (inputs.exchange_rate_krw - BASELINE.exchange_rate_krw) / BASELINE.exchange_rate_krw;
   const oil_eff = (inputs.oil_price_usd - BASELINE.oil_price_usd) / BASELINE.oil_price_usd;
   const wage_eff = (inputs.min_wage_change_pct - BASELINE.min_wage_change_pct) / 100;
 
-  const total_change_pct = (ex_rate_eff * 15 + oil_eff * 10 + wage_eff * 8).toFixed(1);
+  const items = DEMO_ITEMS.map((item) => {
+    const change =
+      item.weights.fx * ex_rate_eff + item.weights.oil * oil_eff + item.weights.wage * wage_eff;
+    return {
+      item: item.key,
+      label: item.label,
+      base: item.base,
+      predicted: item.base * (1 + change),
+      change_percent: change * 100,
+    };
+  });
+
+  const total_base = items.reduce((sum, c) => sum + c.base, 0);
+  const total_predicted = items.reduce((sum, c) => sum + c.predicted, 0);
+  const total_change_pct = ((total_predicted - total_base) / total_base) * 100;
+
   return {
+    summary: "샘플 데이터 기반 즉석 미리보기입니다.",
+    data: items,
     total_change_pct,
-    commodities: [
-      { name: "식용유", base_monthly_cost: 100, projected_monthly_cost: 100 * (1 + ex_rate_eff * 0.8) },
-      { name: "닭고기", base_monthly_cost: 150, projected_monthly_cost: 150 * (1 + wage_eff * 0.5) },
-      { name: "쌀", base_monthly_cost: 80, projected_monthly_cost: 80 * (1 + wage_eff * 0.3) },
-      { name: "대파", base_monthly_cost: 50, projected_monthly_cost: 50 * (1 + oil_eff * 0.2) },
-      { name: "밀가루", base_monthly_cost: 120, projected_monthly_cost: 120 * (1 + ex_rate_eff * 0.7) },
-      { name: "고구마", base_monthly_cost: 70, projected_monthly_cost: 70 },
-    ],
+    total_base,
+    total_predicted,
   };
 };
 
@@ -146,11 +166,11 @@ const OutputPanel = ({ result, liveResult }) => {
     );
   }
 
-  const chartData = displayResult.commodities.map((c) => ({
-    name: c.name,
-    "기준 원가": c.base_monthly_cost,
-    "예상 원가": c.projected_monthly_cost,
-  }));
+  const chartData = displayResult.data?.map((c) => ({
+    name: c.label ?? c.item,
+    "기준 원가": Math.round(c.base),
+    "예상 원가": Math.round(c.predicted),
+  })) ?? [];
 
   return (
     <div className="space-y-5 fade-up">
@@ -161,10 +181,15 @@ const OutputPanel = ({ result, liveResult }) => {
             {totalChange > 0 ? "+" : ""}{totalChange}%
           </span>
         </div>
-        {result && (
+        {displayResult.summary && (
+          <p className="text-xs mt-2" style={{ color: "var(--text)" }}>
+            {displayResult.summary}
+          </p>
+        )}
+        {displayResult.total_base !== undefined && (
           <p className="text-xs mt-1" style={{ color: "var(--text)" }}>
-            기준 {result.total_base_monthly.toLocaleString()}원 →{" "}
-            {result.total_projected_monthly.toLocaleString()}원
+            기준 {Math.round(displayResult.total_base).toLocaleString()}원 →{" "}
+            {Math.round(displayResult.total_predicted).toLocaleString()}원
           </p>
         )}
       </Card>
@@ -188,9 +213,10 @@ const OutputPanel = ({ result, liveResult }) => {
 
 const WhatIfEngine = () => {
   const [inputs, setInputs] = useState(BASELINE);
-  const [result, setResult] = useState(null); // Full API result
-  const [liveResult, setLiveResult] = useState(null); // Local preview result
+  const [result, setResult] = useState(null);
+  const [liveResult, setLiveResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [targetDate, setTargetDate] = useState(() => new Date().toISOString().slice(0, 10));
   const debouncedInputs = useDebounce(inputs, 200);
 
   useEffect(() => {
@@ -202,10 +228,17 @@ const WhatIfEngine = () => {
   const handleSimulate = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/simulate", {
+      const payload = {
+        target_date: targetDate,
+        exchange_rate_krw: inputs.exchange_rate_krw,
+        oil_price_usd: inputs.oil_price_usd,
+        min_wage_change_pct: inputs.min_wage_change_pct,
+      };
+
+      const res = await fetch("/api/v1/what-if", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(inputs),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("서버 오류");
       const data = await res.json();
@@ -227,9 +260,21 @@ const WhatIfEngine = () => {
           <h1 className="text-3xl font-black tracking-tight" style={{ color: "var(--text-h)" }}>
             가격 충격 시뮬레이터
           </h1>
-          <p className="mt-2 text-sm" style={{ color: "var(--text)" }}>
-            거시 변수를 조정하면 월간 식재료비 변동을 즉시 예측합니다
-          </p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-2">
+            <p className="text-sm" style={{ color: "var(--text)" }}>
+              거시 변수를 조정하면 월간 식재료비 변동을 즉시 예측합니다
+            </p>
+            <label className="text-xs font-semibold flex items-center gap-2" style={{ color: "var(--text)" }}>
+              기준 날짜
+              <input
+                type="date"
+                value={targetDate}
+                onChange={(e) => setTargetDate(e.target.value)}
+                className="border rounded-lg px-3 py-1 text-sm"
+                style={{ borderColor: "var(--border)", color: "var(--text-h)" }}
+              />
+            </label>
+          </div>
         </div>
       </div>
 

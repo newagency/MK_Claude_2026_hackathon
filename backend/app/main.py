@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import analyzer, commodities, simulate, news
+from app.api import analyzer, commodities, simulate, news, whatif
 
 app = FastAPI(title="sosang")
 
@@ -8,6 +8,7 @@ app.include_router(analyzer.router,    prefix="/api/v1", tags=["Analysis"])
 app.include_router(commodities.router, prefix="/api/v1", tags=["Commodities"])
 app.include_router(simulate.router,    prefix="/api/v1", tags=["Simulate"])
 app.include_router(news.router,        prefix="/api/v1", tags=["News"])
+app.include_router(whatif.router,      prefix="/api/v1", tags=["WhatIf"])
 
 app.add_middleware(
     CORSMiddleware,
