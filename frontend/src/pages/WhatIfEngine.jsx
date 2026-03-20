@@ -294,17 +294,14 @@ const WhatIfEngine = () => {
   return (
     <div>
       <div className="page-header">
-        <div className="max-w-5xl mx-auto relative z-10">
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--accent)" }}>
+        <div className="max-w-6xl mx-auto px-5 relative z-10">
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
             거시경제 민감도 분석
           </p>
-          <h1 className="text-3xl font-black tracking-tight" style={{ color: "var(--text-h)" }}>
-            가격 충격 시뮬레이터
-          </h1>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-2">
-            <p className="text-sm" style={{ color: "var(--text)" }}>
-              거시 변수를 조정하면 월간 식재료비 변동을 즉시 예측합니다
-            </p>
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <h1 className="text-xl font-black tracking-tight" style={{ color: "var(--text-h)" }}>
+              가격 충격 시뮬레이터
+            </h1>
             <label className="text-xs font-semibold flex items-center gap-2" style={{ color: "var(--text)" }}>
               기준 날짜
               <input
@@ -319,7 +316,7 @@ const WhatIfEngine = () => {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-5 py-7">
+      <div className="max-w-6xl mx-auto px-5 py-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <InputPanel
             inputs={inputs}
