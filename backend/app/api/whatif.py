@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import json
+import logging
 from datetime import date
-from typing import Dict, List
+from typing import Dict, List, Optional
 
+from anthropic import Anthropic
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services.whatif import (
     COMMODITY_CONFIG,
     load_baseline,
+    BASE_MIN_WAGE,
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 SENSITIVITY_MATRIX: Dict[str, Dict[str, float]] = {
     "Egg": {"oil": 0.12, "fx": 0.45, "wage": 0.15},
@@ -30,27 +35,99 @@ class WhatIfRequest(BaseModel):
     min_wage_change_pct: float = Field(..., ge=-20, le=50, description="최저임금 변동률 (%)")
 
 
-def _compute_summary(total_change_pct: float, oil_delta: float, fx_delta: float, wage_delta: float) -> str:
-    trending = "상승" if total_change_pct > 0 else "하락" if total_change_pct < 0 else "보합"
-    drivers = []
-    if abs(oil_delta) > 0.01:
-        drivers.append("유가")
-    if abs(fx_delta) > 0.01:
-        drivers.append("환율")
-    if abs(wage_delta) > 0.01:
-        drivers.append("인건비")
-
-    if not drivers:
-        return "거시 변수 변동이 거의 없어 가격이 큰 폭으로 움직이지 않을 것으로 예상됩니다."
-
-    if total_change_pct > 0:
-        return f"{', '.join(drivers)} 상승 영향으로 대부분 품목 가격이 {trending}할 전망입니다."
-    if total_change_pct < 0:
-        return f"{', '.join(drivers)} 하락 영향으로 비용 압력이 완화되어 가격이 {trending}세입니다."
-    return "상반된 변수 영향이 상쇄되어 전체 가격 수준은 보합세를 보일 전망입니다."
+@router.get("/what-if/baseline")
+def get_baseline(date: date):
+    baseline = load_baseline(date)
+    if baseline.base_diesel is None or baseline.base_fx is None:
+        raise HTTPException(status_code=404, detail="해당 날짜의 기준 유가/환율 데이터를 찾을 수 없습니다.")
+    return {
+        "target_date": date.strftime("%Y-%m-%d"),
+        "exchange_rate_krw": baseline.base_fx,
+        "oil_price_krw": baseline.base_diesel,
+        "min_wage": baseline.base_wage,
+        "commodities": {k: v for k, v in baseline.current_prices.items() if v is not None},
+    }
 
 
-def _calculate_predictions(
+def _build_prompt(
+    target_date: str,
+    base_diesel: float,
+    base_fx: float,
+    base_wage: float,
+    current_prices: Dict[str, float],
+    oil_delta_pct: float,
+    fx_delta_pct: float,
+    wage_delta_pct: float,
+) -> str:
+    return f"""
+# Role: Expert Economic Analyst & Commodity Price Predictor
+
+# Context:
+You are analyzing the South Korean food commodity market based on 2025 historical data. 
+Your task is to predict price changes when the user adjusts "Oil Prices", "Exchange Rates (USD/KRW)", and "Minimum Wage" via a dashboard toolbar.
+
+# Baseline Data (Reference Point: {target_date}):
+- Reference Diesel Price: {base_diesel} KRW
+- Reference FX Rate (USD/KRW): {base_fx} KRW
+- Reference Minimum Wage: {base_wage} KRW
+- Current Market Prices: {current_prices}
+
+# Sensitivity Matrix (Derived from Regression Analysis):
+The following coefficients represent the % change in item price for every 1% change in the factor.
+- Egg: {{ "oil": 0.12, "fx": 0.45, "wage": 0.15 }}
+- Pork: {{ "oil": 0.10, "fx": 0.65, "wage": 0.25 }}
+- Rice: {{ "oil": 0.15, "fx": 0.10, "wage": 0.20 }}
+- Apple: {{ "oil": 0.60, "fx": 0.20, "wage": 0.40 }}
+- Salt: {{ "oil": 0.35, "fx": 0.05, "wage": 0.60 }}
+- Garlic: {{ "oil": 0.25, "fx": 0.40, "wage": 0.55 }}
+
+# Calculation Logic:
+Predicted_Price = Base_Price * (1 + (Oil_Delta * oil_sens) + (FX_Delta * fx_sens) + (Wage_Delta * wage_sens))
+*Delta = (New_Value - Base_Value) / Base_Value
+
+# User Input (Toolbar Adjustments):
+- Oil Price Change: {oil_delta_pct}%
+- FX Rate Change: {fx_delta_pct}%
+- Minimum Wage Change: {wage_delta_pct}%
+
+# Instructions:
+1. Apply the formula to each commodity based on the User Input.
+2. Provide a brief economic rationale (1-2 sentences) for the overall trend.
+3. Return the result STRICTLY in the following JSON format for bar chart visualization.
+
+# Output Format (JSON):
+{{
+  "summary": "Brief explanation of why prices moved this way.",
+  "data": [
+    {{ "item": "Egg", "base": {current_prices.get('Egg', 0)}, "predicted": 0, "change_percent": 0.0 }},
+    {{ "item": "Pork", "base": {current_prices.get('Pork', 0)}, "predicted": 0, "change_percent": 0.0 }},
+    {{ "item": "Rice", "base": {current_prices.get('Rice', 0)}, "predicted": 0, "change_percent": 0.0 }},
+    {{ "item": "Apple", "base": {current_prices.get('Apple', 0)}, "predicted": 0, "change_percent": 0.0 }},
+    {{ "item": "Salt", "base": {current_prices.get('Salt', 0)}, "predicted": 0, "change_percent": 0.0 }},
+    {{ "item": "Garlic", "base": {current_prices.get('Garlic', 0)}, "predicted": 0, "change_percent": 0.0 }}
+  ]
+}}
+"""
+
+
+def _call_claude(prompt: str) -> Optional[dict]:
+    client = Anthropic()
+    try:
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        return json.loads(raw)
+    except Exception as exc:
+        logger.warning("Claude call failed: %s", exc)
+        return None
+
+
+def _fallback_predictions(
     baseline_prices: Dict[str, float | None],
     oil_delta: float,
     fx_delta: float,
@@ -89,26 +166,49 @@ def run_what_if(req: WhatIfRequest):
     fx_delta = (req.exchange_rate_krw - baseline.base_fx) / baseline.base_fx
     wage_delta = req.min_wage_change_pct / 100
 
-    predictions = _calculate_predictions(baseline.current_prices, oil_delta, fx_delta, wage_delta)
-    if not predictions:
+    current_prices = {k: v for k, v in baseline.current_prices.items() if v is not None}
+    if not current_prices:
         raise HTTPException(status_code=400, detail="해당 날짜에 대한 표준 가격 정보가 없습니다.")
+
+    prompt = _build_prompt(
+        target_date=req.target_date.strftime("%Y-%m-%d"),
+        base_diesel=round(baseline.base_diesel, 2),
+        base_fx=round(baseline.base_fx, 2),
+        base_wage=BASE_MIN_WAGE,
+        current_prices=current_prices,
+        oil_delta_pct=round(oil_delta * 100, 2),
+        fx_delta_pct=round(fx_delta * 100, 2),
+        wage_delta_pct=req.min_wage_change_pct,
+    )
+
+    claude_result = _call_claude(prompt)
+    if claude_result and "data" in claude_result:
+        predictions = []
+        for entry in claude_result["data"]:
+            item_key = entry.get("item")
+            base_price = current_prices.get(item_key)
+            if base_price is None:
+                continue
+            predictions.append(
+                {
+                    "item": item_key,
+                    "label": COMMODITY_CONFIG.get(item_key, {}).get("label", item_key),
+                    "base": round(base_price, 2),
+                    "predicted": entry.get("predicted", base_price),
+                    "change_percent": entry.get("change_percent", 0),
+                }
+            )
+        summary = claude_result.get("summary")
+    else:
+        predictions = _fallback_predictions(baseline.current_prices, oil_delta, fx_delta, wage_delta)
+        summary = "LLM 호출 실패로 회귀 분석 기반 추정치를 사용했습니다."
+
+    if not predictions:
+        raise HTTPException(status_code=400, detail="LLM 결과를 해석할 수 없습니다.")
 
     total_base = sum(item["base"] for item in predictions)
     total_pred = sum(item["predicted"] for item in predictions)
     total_change_pct = ((total_pred - total_base) / total_base) * 100 if total_base else 0
-
-    summary = _compute_summary(total_change_pct, oil_delta, fx_delta, wage_delta)
-    current_prices = {k: v for k, v in baseline.current_prices.items() if v is not None}
-
-    prompt_context = {
-        "target_date": req.target_date.strftime("%Y-%m-%d"),
-        "base_diesel": round(baseline.base_diesel, 2),
-        "base_fx": round(baseline.base_fx, 2),
-        "base_wage": baseline.base_wage,
-        "current_prices": current_prices,
-    }
-    # Placeholder for future Claude API integration.
-    _ = prompt_context  # suppress lint warnings until real API call is wired
 
     return {
         "summary": summary,

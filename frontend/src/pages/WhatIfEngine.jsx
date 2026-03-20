@@ -3,7 +3,7 @@ import { BarChart, Card, Title } from "@tremor/react";
 import { TrendingUp, Fuel, Users, BarChart2 } from "lucide-react";
 import BrandAnalysis from "../components/BrandAnalysis";
 
-const BASELINE = { exchange_rate_krw: 1380, oil_price_usd: 75, min_wage_change_pct: 0 };
+const BASELINE = { exchange_rate_krw: 1380, oil_price_usd: 1500, min_wage_change_pct: 0 };
 const ICONS = {
   exchange_rate_krw: TrendingUp,
   oil_price_usd: Fuel,
@@ -74,10 +74,10 @@ const DEMO_ITEMS = [
   { key: "Garlic", label: "피마늘", base: 4500, weights: { fx: 0.4, oil: 0.25, wage: 0.55 } },
 ];
 
-const runFakeSim = (inputs) => {
-  const ex_rate_eff = (inputs.exchange_rate_krw - BASELINE.exchange_rate_krw) / BASELINE.exchange_rate_krw;
-  const oil_eff = (inputs.oil_price_usd - BASELINE.oil_price_usd) / BASELINE.oil_price_usd;
-  const wage_eff = (inputs.min_wage_change_pct - BASELINE.min_wage_change_pct) / 100;
+const runFakeSim = (inputs, baseline = BASELINE) => {
+  const ex_rate_eff = (inputs.exchange_rate_krw - baseline.exchange_rate_krw) / baseline.exchange_rate_krw;
+  const oil_eff = (inputs.oil_price_usd - baseline.oil_price_usd) / baseline.oil_price_usd;
+  const wage_eff = (inputs.min_wage_change_pct - baseline.min_wage_change_pct) / 100;
 
   const items = DEMO_ITEMS.map((item) => {
     const change =
@@ -104,7 +104,7 @@ const runFakeSim = (inputs) => {
   };
 };
 
-const InputPanel = ({ inputs, setInputs, onSimulate, loading }) => (
+const InputPanel = ({ inputs, setInputs, onSimulate, loading, baselineValues }) => (
   <Card className="p-5 space-y-5">
     <Slider
       id="exchange_rate_krw"
@@ -113,16 +113,16 @@ const InputPanel = ({ inputs, setInputs, onSimulate, loading }) => (
       unit="원" min={1100} max={1800} step={10}
       value={inputs.exchange_rate_krw}
       onChange={setInputs("exchange_rate_krw")}
-      baseline={BASELINE.exchange_rate_krw}
+      baseline={baselineValues.exchange_rate_krw}
     />
     <Slider
       id="oil_price_usd"
-      label="브렌트유 가격"
-      sublabel="물류비·포장비 등 간접 원가에 영향"
-      unit="USD/배럴" min={40} max={160} step={1}
+      label="경유 가격"
+      sublabel="물류·난방비 등 간접 원가에 영향 (KRW/L)"
+      unit="KRW/L" min={500} max={3000} step={10}
       value={inputs.oil_price_usd}
       onChange={setInputs("oil_price_usd")}
-      baseline={BASELINE.oil_price_usd}
+      baseline={baselineValues.oil_price_usd}
     />
     <Slider
       id="min_wage_change_pct"
@@ -131,7 +131,7 @@ const InputPanel = ({ inputs, setInputs, onSimulate, loading }) => (
       unit="%" min={-5} max={25} step={0.5}
       value={inputs.min_wage_change_pct}
       onChange={setInputs("min_wage_change_pct")}
-      baseline={BASELINE.min_wage_change_pct}
+      baseline={baselineValues.min_wage_change_pct}
     />
     <button
       onClick={onSimulate}
@@ -211,17 +211,58 @@ const OutputPanel = ({ result, liveResult }) => {
   );
 };
 
+const LABEL_MAP = DEMO_ITEMS.reduce((acc, item) => ({ ...acc, [item.key]: item.label }), {});
+
 const WhatIfEngine = () => {
   const [inputs, setInputs] = useState(BASELINE);
+  const [baselineInputs, setBaselineInputs] = useState(BASELINE);
   const [result, setResult] = useState(null);
   const [liveResult, setLiveResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [targetDate, setTargetDate] = useState(() => new Date().toISOString().slice(0, 10));
   const debouncedInputs = useDebounce(inputs, 200);
 
   useEffect(() => {
-    setLiveResult(runFakeSim(debouncedInputs));
-  }, [debouncedInputs]);
+    setLiveResult(runFakeSim(debouncedInputs, baselineInputs));
+  }, [debouncedInputs, baselineInputs]);
+
+  useEffect(() => {
+    async function fetchBaseline() {
+      setInitialLoading(true);
+      try {
+        const resp = await fetch(`/api/v1/what-if/baseline?date=${targetDate}`);
+        if (!resp.ok) throw new Error("기준 데이터를 불러오지 못했습니다");
+        const data = await resp.json();
+        const nextBaseline = {
+          exchange_rate_krw: data.exchange_rate_krw,
+          oil_price_usd: Math.round(data.oil_price_krw),
+          min_wage_change_pct: 0,
+        };
+        setBaselineInputs(nextBaseline);
+        setInputs(nextBaseline);
+        const commodityEntries = Object.entries(data.commodities || {});
+        const totalBase = commodityEntries.reduce((sum, [, value]) => sum + value, 0);
+        setLiveResult({
+          summary: "기준값을 불러왔습니다.",
+          data: commodityEntries.map(([item, base]) => ({
+            item,
+            label: LABEL_MAP[item] ?? item,
+            base,
+            predicted: base,
+            change_percent: 0,
+          })),
+          total_change_pct: 0,
+          total_base: totalBase,
+          total_predicted: totalBase,
+        });
+      } catch (err) {
+        console.error(err);
+      }
+      setInitialLoading(false);
+    }
+    fetchBaseline();
+  }, [targetDate]);
 
   const set = (key) => (val) => setInputs((prev) => ({ ...prev, [key]: val }));
 
@@ -280,7 +321,13 @@ const WhatIfEngine = () => {
 
       <div className="max-w-5xl mx-auto px-5 py-7">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <InputPanel inputs={inputs} setInputs={set} onSimulate={handleSimulate} loading={loading} />
+          <InputPanel
+            inputs={inputs}
+            setInputs={set}
+            onSimulate={handleSimulate}
+            loading={loading || initialLoading}
+            baselineValues={baselineInputs}
+          />
           <OutputPanel result={result} liveResult={liveResult} />
         </div>
         <BrandAnalysis />
