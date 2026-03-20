@@ -1182,6 +1182,7 @@ const NewsPanel = ({ selectedDate }) => {
 
   useEffect(() => {
     const controller = new AbortController();
+    let cancelled = false;
 
     setLoading(true);
     setNewsData(null);
@@ -1193,15 +1194,22 @@ const NewsPanel = ({ selectedDate }) => {
         }
         return response.json();
       })
-      .then(setNewsData)
+      .then((data) => {
+        if (!cancelled) setNewsData(data);
+      })
       .catch((error) => {
-        if (error?.name !== "AbortError") {
+        if (!cancelled && error?.name !== "AbortError") {
           setNewsData({ matches: [], total_articles: 0, filtered_count: 0 });
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [dateStr]);
 
   return (
