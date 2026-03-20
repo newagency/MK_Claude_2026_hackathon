@@ -97,7 +97,7 @@ Predicted_Price = Base_Price * (1 + (Oil_Delta * oil_sens) + (FX_Delta * fx_sens
 
 # Output Format (JSON):
 {{
-  "summary": "Brief explanation of why prices moved this way.",
+  "summary": "Brief explanation of why prices moved this way in Korean.",
   "data": [
     {{ "item": "Egg", "base": {current_prices.get('Egg', 0)}, "predicted": 0, "change_percent": 0.0 }},
     {{ "item": "Pork", "base": {current_prices.get('Pork', 0)}, "predicted": 0, "change_percent": 0.0 }},
@@ -114,14 +114,26 @@ def _call_claude(prompt: str) -> Optional[dict]:
     client = Anthropic()
     try:
         response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-haiku-4-5",
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-        return json.loads(raw)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            start = raw.find("{")
+            end = raw.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                candidate = raw[start : end + 1]
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+            logger.warning("Claude output parse failed: %s", raw[:200])
+            return None
     except Exception as exc:
         logger.warning("Claude call failed: %s", exc)
         return None

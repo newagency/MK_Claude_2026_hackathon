@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { BarChart, Card, Title } from "@tremor/react";
-import { TrendingUp, Fuel, Users, BarChart2 } from "lucide-react";
+import { TrendingUp, Fuel, Users, BarChart2, Loader2 } from "lucide-react";
 import BrandAnalysis from "../components/BrandAnalysis";
 
 const BASELINE = { exchange_rate_krw: 1380, oil_price_usd: 1500, min_wage_change_pct: 0 };
@@ -8,15 +8,6 @@ const ICONS = {
   exchange_rate_krw: TrendingUp,
   oil_price_usd: Fuel,
   min_wage_change_pct: Users,
-};
-
-const useDebounce = (value, delay) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
 };
 
 const Slider = ({ id, label, sublabel, unit, min, max, step, value, onChange, baseline }) => {
@@ -64,46 +55,15 @@ const Slider = ({ id, label, sublabel, unit, min, max, step, value, onChange, ba
   );
 };
 
-// Simplified local calculation for live preview
-const DEMO_ITEMS = [
-  { key: "Egg", label: "계란", base: 1400, weights: { fx: 0.45, oil: 0.12, wage: 0.15 } },
-  { key: "Pork", label: "돼지", base: 2500, weights: { fx: 0.65, oil: 0.1, wage: 0.25 } },
-  { key: "Rice", label: "쌀", base: 1200, weights: { fx: 0.1, oil: 0.15, wage: 0.2 } },
-  { key: "Apple", label: "사과", base: 3000, weights: { fx: 0.2, oil: 0.6, wage: 0.4 } },
-  { key: "Salt", label: "천일염", base: 2300, weights: { fx: 0.05, oil: 0.35, wage: 0.6 } },
-  { key: "Garlic", label: "피마늘", base: 4500, weights: { fx: 0.4, oil: 0.25, wage: 0.55 } },
-];
-
-const runFakeSim = (inputs, baseline = BASELINE) => {
-  const ex_rate_eff = (inputs.exchange_rate_krw - baseline.exchange_rate_krw) / baseline.exchange_rate_krw;
-  const oil_eff = (inputs.oil_price_usd - baseline.oil_price_usd) / baseline.oil_price_usd;
-  const wage_eff = (inputs.min_wage_change_pct - baseline.min_wage_change_pct) / 100;
-
-  const items = DEMO_ITEMS.map((item) => {
-    const change =
-      item.weights.fx * ex_rate_eff + item.weights.oil * oil_eff + item.weights.wage * wage_eff;
-    return {
-      item: item.key,
-      label: item.label,
-      base: item.base,
-      predicted: item.base * (1 + change),
-      change_percent: change * 100,
-    };
-  });
-
-  const total_base = items.reduce((sum, c) => sum + c.base, 0);
-  const total_predicted = items.reduce((sum, c) => sum + c.predicted, 0);
-  const total_change_pct = ((total_predicted - total_base) / total_base) * 100;
-
-  return {
-    summary: "샘플 데이터 기반 즉석 미리보기입니다.",
-    data: items,
-    total_change_pct,
-    total_base,
-    total_predicted,
-  };
+const COMMODITY_KEYS = ["Egg", "Pork", "Rice", "Apple", "Salt", "Garlic"];
+const LABEL_MAP = {
+  Egg: "계란",
+  Pork: "돼지",
+  Rice: "쌀",
+  Apple: "사과",
+  Salt: "천일염",
+  Garlic: "피마늘",
 };
-
 const InputPanel = ({ inputs, setInputs, onSimulate, loading, baselineValues }) => (
   <Card className="p-5 space-y-5">
     <Slider
@@ -147,7 +107,16 @@ const InputPanel = ({ inputs, setInputs, onSimulate, loading, baselineValues }) 
   </Card>
 );
 
-const OutputPanel = ({ result, liveResult }) => {
+const OutputPanel = ({ result, liveResult, loadingBaseline }) => {
+  if (loadingBaseline) {
+    return (
+      <Card className="p-6 flex flex-col items-center justify-center gap-3 h-full">
+        <Loader2 className="animate-spin text-gray-500" size={20} />
+        <p className="text-sm font-semibold" style={{ color: "var(--text-h)" }}>기준 데이터를 불러오는 중...</p>
+      </Card>
+    );
+  }
+
   const displayResult = result || liveResult;
   const totalChange = parseFloat(displayResult?.total_change_pct ?? 0);
   const isUp = totalChange > 0;
@@ -211,8 +180,6 @@ const OutputPanel = ({ result, liveResult }) => {
   );
 };
 
-const LABEL_MAP = DEMO_ITEMS.reduce((acc, item) => ({ ...acc, [item.key]: item.label }), {});
-
 const WhatIfEngine = () => {
   const [inputs, setInputs] = useState(BASELINE);
   const [baselineInputs, setBaselineInputs] = useState(BASELINE);
@@ -221,15 +188,12 @@ const WhatIfEngine = () => {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [targetDate, setTargetDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const debouncedInputs = useDebounce(inputs, 200);
-
-  useEffect(() => {
-    setLiveResult(runFakeSim(debouncedInputs, baselineInputs));
-  }, [debouncedInputs, baselineInputs]);
 
   useEffect(() => {
     async function fetchBaseline() {
       setInitialLoading(true);
+      setResult(null);
+      setLiveResult(null);
       try {
         const resp = await fetch(`/api/v1/what-if/baseline?date=${targetDate}`);
         if (!resp.ok) throw new Error("기준 데이터를 불러오지 못했습니다");
@@ -241,23 +205,32 @@ const WhatIfEngine = () => {
         };
         setBaselineInputs(nextBaseline);
         setInputs(nextBaseline);
-        const commodityEntries = Object.entries(data.commodities || {});
-        const totalBase = commodityEntries.reduce((sum, [, value]) => sum + value, 0);
-        setLiveResult({
-          summary: "기준값을 불러왔습니다.",
-          data: commodityEntries.map(([item, base]) => ({
-            item,
-            label: LABEL_MAP[item] ?? item,
-            base,
-            predicted: base,
-            change_percent: 0,
-          })),
-          total_change_pct: 0,
-          total_base: totalBase,
-          total_predicted: totalBase,
-        });
+        const commodityEntries = COMMODITY_KEYS.map((key) => {
+          const base = data.commodities?.[key];
+          if (base == null) return null;
+          return { item: key, label: LABEL_MAP[key], base: Number(base) };
+        }).filter(Boolean);
+        if (commodityEntries.length > 0) {
+          const totalBase = commodityEntries.reduce((sum, entry) => sum + entry.base, 0);
+          setLiveResult({
+            summary: "기준값을 불러왔습니다.",
+            data: commodityEntries.map((entry) => ({
+              item: entry.item,
+              label: entry.label,
+              base: entry.base,
+              predicted: entry.base,
+              change_percent: 0,
+            })),
+            total_change_pct: 0,
+            total_base: totalBase,
+            total_predicted: totalBase,
+          });
+        } else {
+          setLiveResult(null);
+        }
       } catch (err) {
         console.error(err);
+        setLiveResult(null);
       }
       setInitialLoading(false);
     }
@@ -325,7 +298,7 @@ const WhatIfEngine = () => {
             loading={loading || initialLoading}
             baselineValues={baselineInputs}
           />
-          <OutputPanel result={result} liveResult={liveResult} />
+          <OutputPanel result={result} liveResult={liveResult} loadingBaseline={initialLoading} />
         </div>
         <BrandAnalysis />
       </div>
