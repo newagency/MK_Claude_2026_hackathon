@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Card, Title, LineChart, Select, SelectItem } from "@tremor/react";
+import { LineChart, Select, SelectItem } from "@tremor/react";
 import { ChevronDown } from "lucide-react";
 
 const COMMODITIES = [
@@ -51,9 +51,9 @@ const BrandAnalysis = () => {
   console.log("Current Brands:", brands);
 
   return (
-    <Card className="p-5 mt-8">
+    <div className="rounded-2xl p-5 mt-8" style={{ background: "#fff", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-4">
-        <Title>브랜드별 가격 비교</Title>
+        <p className="text-sm font-bold" style={{ color: "var(--text-h)" }}>브랜드별 가격 비교</p>
         <div className="w-48">
             <Select value={selectedCommodity} onValueChange={setSelectedCommodity} icon={ChevronDown}>
                 {COMMODITIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
@@ -104,7 +104,7 @@ const BrandAnalysis = () => {
                   <p className="text-tremor-content">선택하신 품목에 대한 데이터가 없습니다.</p>
               </div>
             )}
-          </Card>
+          </div>
         );
       };
 

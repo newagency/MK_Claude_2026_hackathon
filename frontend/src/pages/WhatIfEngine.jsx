@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
-import { BarChart, Card, Title } from "@tremor/react";
+import { BarChart } from "@tremor/react";
 import { TrendingUp, Fuel, Users, BarChart2, Loader2 } from "lucide-react";
 import BrandAnalysis from "../components/BrandAnalysis";
+
+const Panel = ({ children, className = "" }) => (
+  <div className={`rounded-2xl p-5 ${className}`} style={{ background: "#fff", border: "1px solid var(--border)" }}>
+    {children}
+  </div>
+);
 
 const BASELINE = { exchange_rate_krw: 1380, oil_price_usd: 1500, min_wage_change_pct: 0 };
 const ICONS = {
@@ -65,7 +71,7 @@ const LABEL_MAP = {
   Garlic: "피마늘",
 };
 const InputPanel = ({ inputs, setInputs, onSimulate, loading, baselineValues }) => (
-  <Card className="p-5 space-y-5">
+  <Panel className="space-y-5">
     <Slider
       id="exchange_rate_krw"
       label="원/달러 환율"
@@ -96,7 +102,7 @@ const InputPanel = ({ inputs, setInputs, onSimulate, loading, baselineValues }) 
     <button
       onClick={onSimulate}
       disabled={loading}
-      className="w-full py-3 rounded-xl text-white font-bold text-sm transition-opacity"
+      className="w-full py-3 rounded-2xl text-white font-bold text-sm transition-opacity"
       style={{
         background: "linear-gradient(135deg, var(--accent-soft), var(--accent))",
         opacity: loading ? 0.7 : 1,
@@ -104,16 +110,16 @@ const InputPanel = ({ inputs, setInputs, onSimulate, loading, baselineValues }) 
     >
       {loading ? "분석 중..." : "전체 시나리오 상세 분석"}
     </button>
-  </Card>
+  </Panel>
 );
 
 const OutputPanel = ({ result, liveResult, loadingBaseline }) => {
   if (loadingBaseline) {
     return (
-      <Card className="p-6 flex flex-col items-center justify-center gap-3 h-full">
+      <Panel className="flex flex-col items-center justify-center gap-3 h-full">
         <Loader2 className="animate-spin text-gray-500" size={20} />
         <p className="text-sm font-semibold" style={{ color: "var(--text-h)" }}>기준 데이터를 불러오는 중...</p>
-      </Card>
+      </Panel>
     );
   }
 
@@ -143,7 +149,7 @@ const OutputPanel = ({ result, liveResult, loadingBaseline }) => {
 
   return (
     <div className="space-y-5 fade-up">
-      <Card className="p-5">
+      <Panel>
         <p className="text-sm font-semibold mb-2" style={{ color: "var(--text)" }}>총 변동</p>
         <div className="flex items-baseline gap-1">
           <span className="text-4xl font-black" style={{ color: riskColor }}>
@@ -161,10 +167,10 @@ const OutputPanel = ({ result, liveResult, loadingBaseline }) => {
             {Math.round(displayResult.total_predicted).toLocaleString()}원
           </p>
         )}
-      </Card>
+      </Panel>
 
-      <Card className="p-5">
-        <Title style={{ color: "var(--text-h)" }}>품목별 원가 비교 (월)</Title>
+      <Panel>
+        <p className="text-sm font-bold mb-1" style={{ color: "var(--text-h)" }}>품목별 원가 비교 (월)</p>
         <BarChart
           className="h-56 mt-4"
           data={chartData}
@@ -175,7 +181,7 @@ const OutputPanel = ({ result, liveResult, loadingBaseline }) => {
           yAxisWidth={60}
           style={{ color: "var(--text-h)" }}
         />
-      </Card>
+      </Panel>
     </div>
   );
 };
@@ -281,7 +287,7 @@ const WhatIfEngine = () => {
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                className="border rounded-lg px-3 py-1 text-sm"
+                className="border rounded-xl px-3 py-1.5 text-sm"
                 style={{ borderColor: "var(--border)", color: "var(--text-h)" }}
               />
             </label>
@@ -290,7 +296,7 @@ const WhatIfEngine = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-5 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <InputPanel
             inputs={inputs}
             setInputs={set}
