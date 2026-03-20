@@ -2,9 +2,10 @@ import { useState } from "react";
 import { BarChart2, ChevronLeft, ChevronRight } from "lucide-react";
 
 const TABS = [
+  { id: "home",      label: "오늘의 브리핑" },
   { id: "dashboard", label: "위험 대시보드" },
   { id: "whatif",    label: "시뮬레이터" },
-  { id: "auditor",   label: "뉴스 감사" },
+  { id: "auditor",   label: "뉴스 브리핑" },
 ];
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];

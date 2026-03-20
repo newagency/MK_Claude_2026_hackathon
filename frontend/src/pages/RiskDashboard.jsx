@@ -779,7 +779,7 @@ const RiskDashboard = ({ selectedDate }) => {
 
   return (
     <div>
-      <div className="page-header" style={{ paddingBottom: "0.75rem", paddingTop: "0.75rem" }}>
+      <div className="page-header">
         <div className="max-w-6xl mx-auto px-5 relative z-10">
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
             가락시장 경락가 기준 · 3년 평균 대비 편차

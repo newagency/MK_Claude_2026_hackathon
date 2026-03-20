@@ -1,22 +1,19 @@
-import { useState, useEffect, useMemo } from "react";
-import { BarChart, Card, Title } from "@tremor/react";
-import { TrendingUp, Fuel, Users, BarChart2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { BarChart } from "@tremor/react";
+import { TrendingUp, Fuel, Users, BarChart2, Loader2 } from "lucide-react";
 import BrandAnalysis from "../components/BrandAnalysis";
 
-const BASELINE = { exchange_rate_krw: 1380, oil_price_usd: 75, min_wage_change_pct: 0 };
+const Panel = ({ children, className = "" }) => (
+  <div className={`rounded-2xl px-4 py-3.5 ${className}`} style={{ background: "#fff", border: "1px solid var(--border)" }}>
+    {children}
+  </div>
+);
+
+const BASELINE = { exchange_rate_krw: 1380, oil_price_usd: 1500, min_wage_change_pct: 0 };
 const ICONS = {
   exchange_rate_krw: TrendingUp,
   oil_price_usd: Fuel,
   min_wage_change_pct: Users,
-};
-
-const useDebounce = (value, delay) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
 };
 
 const Slider = ({ id, label, sublabel, unit, min, max, step, value, onChange, baseline }) => {
@@ -25,25 +22,25 @@ const Slider = ({ id, label, sublabel, unit, min, max, step, value, onChange, ba
   const Icon = ICONS[id];
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Icon size={16} className="text-gray-500" />
+          <Icon size={14} className="text-gray-500" />
           <div>
-            <p className="text-sm font-semibold" style={{ color: "var(--text-h)" }}>{label}</p>
-            {sublabel && <p className="text-xs mt-0.5" style={{ color: "var(--text)" }}>{sublabel}</p>}
+            <p className="text-xs font-bold" style={{ color: "var(--text-h)" }}>{label}</p>
+            {sublabel && <p className="text-[10px] mt-0.5 leading-tight" style={{ color: "var(--text)", opacity: 0.7 }}>{sublabel}</p>}
           </div>
         </div>
         <div className="text-right shrink-0 pl-4">
           <span
-            className="text-lg font-black"
+            className="text-base font-black tabular-nums"
             style={{ color: changed ? "var(--accent)" : "var(--text-h)" }}
           >
             {value.toLocaleString()}
           </span>
-          <span className="text-xs ml-1" style={{ color: "var(--text)" }}>{unit}</span>
+          <span className="text-[10px] ml-0.5" style={{ color: "var(--text)" }}>{unit}</span>
           {changed && (
-            <p className="text-xs mt-0.5" style={{ color: "var(--text)" }}>
+            <p className="text-[10px]" style={{ color: "var(--text)", opacity: 0.6 }}>
               기준 {baseline.toLocaleString()}
             </p>
           )}
@@ -64,28 +61,17 @@ const Slider = ({ id, label, sublabel, unit, min, max, step, value, onChange, ba
   );
 };
 
-// Simplified local calculation for live preview
-const runFakeSim = (inputs) => {
-  const ex_rate_eff = (inputs.exchange_rate_krw - BASELINE.exchange_rate_krw) / BASELINE.exchange_rate_krw;
-  const oil_eff = (inputs.oil_price_usd - BASELINE.oil_price_usd) / BASELINE.oil_price_usd;
-  const wage_eff = (inputs.min_wage_change_pct - BASELINE.min_wage_change_pct) / 100;
-
-  const total_change_pct = (ex_rate_eff * 15 + oil_eff * 10 + wage_eff * 8).toFixed(1);
-  return {
-    total_change_pct,
-    commodities: [
-      { name: "식용유", base_monthly_cost: 100, projected_monthly_cost: 100 * (1 + ex_rate_eff * 0.8) },
-      { name: "닭고기", base_monthly_cost: 150, projected_monthly_cost: 150 * (1 + wage_eff * 0.5) },
-      { name: "쌀", base_monthly_cost: 80, projected_monthly_cost: 80 * (1 + wage_eff * 0.3) },
-      { name: "대파", base_monthly_cost: 50, projected_monthly_cost: 50 * (1 + oil_eff * 0.2) },
-      { name: "밀가루", base_monthly_cost: 120, projected_monthly_cost: 120 * (1 + ex_rate_eff * 0.7) },
-      { name: "고구마", base_monthly_cost: 70, projected_monthly_cost: 70 },
-    ],
-  };
+const COMMODITY_KEYS = ["Egg", "Pork", "Rice", "Apple", "Salt", "Garlic"];
+const LABEL_MAP = {
+  Egg: "계란",
+  Pork: "돼지",
+  Rice: "쌀",
+  Apple: "사과",
+  Salt: "천일염",
+  Garlic: "피마늘",
 };
-
-const InputPanel = ({ inputs, setInputs, onSimulate, loading }) => (
-  <Card className="p-5 space-y-5">
+const InputPanel = ({ inputs, setInputs, onSimulate, loading, baselineValues }) => (
+  <Panel className="space-y-3.5">
     <Slider
       id="exchange_rate_krw"
       label="원/달러 환율"
@@ -93,16 +79,16 @@ const InputPanel = ({ inputs, setInputs, onSimulate, loading }) => (
       unit="원" min={1100} max={1800} step={10}
       value={inputs.exchange_rate_krw}
       onChange={setInputs("exchange_rate_krw")}
-      baseline={BASELINE.exchange_rate_krw}
+      baseline={baselineValues.exchange_rate_krw}
     />
     <Slider
       id="oil_price_usd"
-      label="브렌트유 가격"
-      sublabel="물류비·포장비 등 간접 원가에 영향"
-      unit="USD/배럴" min={40} max={160} step={1}
+      label="경유 가격"
+      sublabel="물류·난방비 등 간접 원가에 영향 (KRW/L)"
+      unit="KRW/L" min={500} max={3000} step={10}
       value={inputs.oil_price_usd}
       onChange={setInputs("oil_price_usd")}
-      baseline={BASELINE.oil_price_usd}
+      baseline={baselineValues.oil_price_usd}
     />
     <Slider
       id="min_wage_change_pct"
@@ -111,12 +97,12 @@ const InputPanel = ({ inputs, setInputs, onSimulate, loading }) => (
       unit="%" min={-5} max={25} step={0.5}
       value={inputs.min_wage_change_pct}
       onChange={setInputs("min_wage_change_pct")}
-      baseline={BASELINE.min_wage_change_pct}
+      baseline={baselineValues.min_wage_change_pct}
     />
     <button
       onClick={onSimulate}
       disabled={loading}
-      className="w-full py-3 rounded-xl text-white font-bold text-sm transition-opacity"
+      className="w-full py-2.5 rounded-2xl text-white font-bold text-xs transition-opacity"
       style={{
         background: "linear-gradient(135deg, var(--accent-soft), var(--accent))",
         opacity: loading ? 0.7 : 1,
@@ -124,10 +110,19 @@ const InputPanel = ({ inputs, setInputs, onSimulate, loading }) => (
     >
       {loading ? "분석 중..." : "전체 시나리오 상세 분석"}
     </button>
-  </Card>
+  </Panel>
 );
 
-const OutputPanel = ({ result, liveResult }) => {
+const OutputPanel = ({ result, liveResult, loadingBaseline }) => {
+  if (loadingBaseline) {
+    return (
+      <Panel className="flex flex-col items-center justify-center gap-3 h-full">
+        <Loader2 className="animate-spin text-gray-500" size={20} />
+        <p className="text-sm font-semibold" style={{ color: "var(--text-h)" }}>기준 데이터를 불러오는 중...</p>
+      </Panel>
+    );
+  }
+
   const displayResult = result || liveResult;
   const totalChange = parseFloat(displayResult?.total_change_pct ?? 0);
   const isUp = totalChange > 0;
@@ -135,7 +130,7 @@ const OutputPanel = ({ result, liveResult }) => {
 
   if (!displayResult) {
     return (
-      <div className="rounded-2xl p-10 flex flex-col items-center justify-center gap-3 text-center h-full"
+      <div className="rounded-2xl p-6 flex flex-col items-center justify-center gap-2 text-center h-full"
            style={{ border: "1px dashed var(--border)", background: "var(--bg-subtle)" }}>
         <BarChart2 size={32} className="text-gray-400" />
         <p className="font-bold mt-2" style={{ color: "var(--text-h)" }}>라이브 프리뷰</p>
@@ -146,33 +141,39 @@ const OutputPanel = ({ result, liveResult }) => {
     );
   }
 
-  const chartData = displayResult.commodities.map((c) => ({
-    name: c.name,
-    "기준 원가": c.base_monthly_cost,
-    "예상 원가": c.projected_monthly_cost,
-  }));
+  const chartData = displayResult.data?.map((c) => ({
+    name: c.label ?? c.item,
+    "기준 원가": Math.round(c.base),
+    "예상 원가": Math.round(c.predicted),
+  })) ?? [];
 
   return (
-    <div className="space-y-5 fade-up">
-      <Card className="p-5">
-        <p className="text-sm font-semibold mb-2" style={{ color: "var(--text)" }}>총 변동</p>
-        <div className="flex items-baseline gap-1">
-          <span className="text-4xl font-black" style={{ color: riskColor }}>
-            {totalChange > 0 ? "+" : ""}{totalChange}%
-          </span>
+    <div className="space-y-3 fade-up">
+      <Panel>
+        <div className="flex items-baseline justify-between">
+          <div>
+            <p className="text-[10px] font-semibold mb-0.5" style={{ color: "var(--text)", opacity: 0.7 }}>총 변동</p>
+            <span className="text-2xl font-black" style={{ color: riskColor }}>
+              {totalChange > 0 ? "+" : ""}{totalChange}%
+            </span>
+          </div>
+          {displayResult.total_base !== undefined && (
+            <p className="text-[11px] tabular-nums" style={{ color: "var(--text)", opacity: 0.6 }}>
+              {Math.round(displayResult.total_base).toLocaleString()}원 → {Math.round(displayResult.total_predicted).toLocaleString()}원
+            </p>
+          )}
         </div>
-        {result && (
-          <p className="text-xs mt-1" style={{ color: "var(--text)" }}>
-            기준 {result.total_base_monthly.toLocaleString()}원 →{" "}
-            {result.total_projected_monthly.toLocaleString()}원
+        {displayResult.summary && (
+          <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: "var(--text)" }}>
+            {displayResult.summary}
           </p>
         )}
-      </Card>
+      </Panel>
 
-      <Card className="p-5">
-        <Title style={{ color: "var(--text-h)" }}>품목별 원가 비교 (월)</Title>
+      <Panel>
+        <p className="text-xs font-bold mb-0.5" style={{ color: "var(--text-h)" }}>품목별 원가 비교 (월)</p>
         <BarChart
-          className="h-56 mt-4"
+          className="h-44 mt-2"
           data={chartData}
           index="name"
           categories={["기준 원가", "예상 원가"]}
@@ -181,31 +182,89 @@ const OutputPanel = ({ result, liveResult }) => {
           yAxisWidth={60}
           style={{ color: "var(--text-h)" }}
         />
-      </Card>
+      </Panel>
     </div>
   );
 };
 
-const WhatIfEngine = () => {
+const fmtDate = (d) => {
+  if (!(d instanceof Date)) return new Date().toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const WhatIfEngine = ({ selectedDate }) => {
+  const targetDate = fmtDate(selectedDate);
   const [inputs, setInputs] = useState(BASELINE);
-  const [result, setResult] = useState(null); // Full API result
-  const [liveResult, setLiveResult] = useState(null); // Local preview result
+  const [baselineInputs, setBaselineInputs] = useState(BASELINE);
+  const [result, setResult] = useState(null);
+  const [liveResult, setLiveResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const debouncedInputs = useDebounce(inputs, 200);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    setLiveResult(runFakeSim(debouncedInputs));
-  }, [debouncedInputs]);
+    async function fetchBaseline() {
+      setInitialLoading(true);
+      setResult(null);
+      setLiveResult(null);
+      try {
+        const resp = await fetch(`/api/v1/what-if/baseline?date=${targetDate}`);
+        if (!resp.ok) throw new Error("기준 데이터를 불러오지 못했습니다");
+        const data = await resp.json();
+        const nextBaseline = {
+          exchange_rate_krw: data.exchange_rate_krw,
+          oil_price_usd: Math.round(data.oil_price_krw),
+          min_wage_change_pct: 0,
+        };
+        setBaselineInputs(nextBaseline);
+        setInputs(nextBaseline);
+        const commodityEntries = COMMODITY_KEYS.map((key) => {
+          const base = data.commodities?.[key];
+          if (base == null) return null;
+          return { item: key, label: LABEL_MAP[key], base: Number(base) };
+        }).filter(Boolean);
+        if (commodityEntries.length > 0) {
+          const totalBase = commodityEntries.reduce((sum, entry) => sum + entry.base, 0);
+          setLiveResult({
+            summary: "기준값을 불러왔습니다.",
+            data: commodityEntries.map((entry) => ({
+              item: entry.item,
+              label: entry.label,
+              base: entry.base,
+              predicted: entry.base,
+              change_percent: 0,
+            })),
+            total_change_pct: 0,
+            total_base: totalBase,
+            total_predicted: totalBase,
+          });
+        } else {
+          setLiveResult(null);
+        }
+      } catch (err) {
+        console.error(err);
+        setLiveResult(null);
+      }
+      setInitialLoading(false);
+    }
+    fetchBaseline();
+  }, [targetDate]);
 
   const set = (key) => (val) => setInputs((prev) => ({ ...prev, [key]: val }));
 
   const handleSimulate = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/simulate", {
+      const payload = {
+        target_date: targetDate,
+        exchange_rate_krw: inputs.exchange_rate_krw,
+        oil_price_usd: inputs.oil_price_usd,
+        min_wage_change_pct: inputs.min_wage_change_pct,
+      };
+
+      const res = await fetch("/api/v1/what-if", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(inputs),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("서버 오류");
       const data = await res.json();
@@ -220,23 +279,26 @@ const WhatIfEngine = () => {
   return (
     <div>
       <div className="page-header">
-        <div className="max-w-5xl mx-auto relative z-10">
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--accent)" }}>
+        <div className="max-w-6xl mx-auto px-5 relative z-10">
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--accent)" }}>
             거시경제 민감도 분석
           </p>
-          <h1 className="text-3xl font-black tracking-tight" style={{ color: "var(--text-h)" }}>
+          <h1 className="text-xl font-black tracking-tight" style={{ color: "var(--text-h)" }}>
             가격 충격 시뮬레이터
           </h1>
-          <p className="mt-2 text-sm" style={{ color: "var(--text)" }}>
-            거시 변수를 조정하면 월간 식재료비 변동을 즉시 예측합니다
-          </p>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-5 py-7">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <InputPanel inputs={inputs} setInputs={set} onSimulate={handleSimulate} loading={loading} />
-          <OutputPanel result={result} liveResult={liveResult} />
+      <div className="max-w-6xl mx-auto px-5 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <InputPanel
+            inputs={inputs}
+            setInputs={set}
+            onSimulate={handleSimulate}
+            loading={loading || initialLoading}
+            baselineValues={baselineInputs}
+          />
+          <OutputPanel result={result} liveResult={liveResult} loadingBaseline={initialLoading} />
         </div>
         <BrandAnalysis />
       </div>
