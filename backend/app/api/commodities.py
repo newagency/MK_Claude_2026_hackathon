@@ -6,12 +6,16 @@ from app.services.collectors.fair_price import PriceForensics
 router = APIRouter()
 
 COMMODITY_META = {
-    "111": {"name": "쌀",    "emoji": "🌾", "en": "Rice"},
-    "115": {"name": "밀가루", "emoji": "🌾", "en": "Flour"},
-    "211": {"name": "고구마", "emoji": "🍠", "en": "Sweet Potato"},
-    "215": {"name": "대파",   "emoji": "🌿", "en": "Green Onion"},
-    "312": {"name": "닭고기", "emoji": "🍗", "en": "Chicken"},
-    "431": {"name": "식용유", "emoji": "🫙", "en": "Cooking Oil"},
+    "egg":    {"name": "계란",   "emoji": "🥚", "en": "Egg"},
+    "pork":   {"name": "돼지",   "emoji": "🐷", "en": "Pork"},
+    "apple":  {"name": "사과",   "emoji": "🍎", "en": "Apple"},
+    "rice":   {"name": "쌀",     "emoji": "🌾", "en": "Rice"},
+    "salt":   {"name": "천일염", "emoji": "🧂", "en": "Sea Salt"},
+    "garlic": {"name": "피마늘", "emoji": "🧄", "en": "Garlic"},
+}
+
+GARAK_CODE_MAP = {
+    "111": "rice",
 }
 
 
@@ -19,16 +23,23 @@ COMMODITY_META = {
 def get_commodities_overview():
     """
     Returns current vs. 3-year-average prices and rocket-feather analysis
-    for all tracked commodities, sorted by price deviation (highest first).
+    for tracked commodities only, sorted by price deviation (highest first).
     """
     data = MockGarakLoader.get_5year_data()
 
     groups: dict[str, list] = defaultdict(list)
     for entry in data:
-        groups[entry["item_code"]].append(entry)
+        raw_code = entry["item_code"]
+        mapped = GARAK_CODE_MAP.get(raw_code)
+        if mapped:
+            groups[mapped].append(entry)
 
     result = []
     for code, entries in groups.items():
+        meta = COMMODITY_META.get(code)
+        if not meta:
+            continue
+
         sorted_entries = sorted(entries, key=lambda x: x["search_date"])
         latest = sorted_entries[-1]
 
@@ -52,8 +63,6 @@ def get_commodities_overview():
             risk = "medium"
         else:
             risk = "low"
-
-        meta = COMMODITY_META.get(code, {"name": code, "emoji": "📦", "en": code})
 
         result.append({
             "item_code": code,

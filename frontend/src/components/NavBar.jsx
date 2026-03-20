@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { BarChart2, ChevronLeft, ChevronRight } from "lucide-react";
 
 const TABS = [
@@ -15,41 +16,73 @@ const clampToToday = (date) => {
   return date > now ? now : date;
 };
 
-const DateInput = ({ value, max, onChange }) => (
-  <input
-    type="text"
-    inputMode="numeric"
-    value={String(value).padStart(2, "0")}
-    onChange={(e) => {
-      const raw = e.target.value.replace(/\D/g, "");
-      if (raw === "") return;
-      const num = Math.min(Math.max(1, parseInt(raw, 10)), max);
-      onChange(num);
-    }}
-    onFocus={(e) => e.target.select()}
-    className="w-6 text-center text-xs font-semibold tabular-nums bg-transparent outline-none
-               rounded hover:bg-[var(--surface)] focus:bg-[var(--surface)] transition-colors"
-    style={{ color: "var(--text-h)" }}
-  />
-);
+const DateInput = ({ value, max, onChange }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
 
-const YearInput = ({ value, onChange }) => (
-  <input
-    type="text"
-    inputMode="numeric"
-    value={String(value)}
-    onChange={(e) => {
-      const raw = e.target.value.replace(/\D/g, "");
-      if (raw.length < 4) return;
-      const num = parseInt(raw.slice(0, 4), 10);
-      if (num >= 2020 && num <= 2030) onChange(num);
-    }}
-    onFocus={(e) => e.target.select()}
-    className="w-9 text-center text-xs font-semibold tabular-nums bg-transparent outline-none
-               rounded hover:bg-[var(--surface)] focus:bg-[var(--surface)] transition-colors"
-    style={{ color: "var(--text-h)" }}
-  />
-);
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={editing ? draft : String(value).padStart(2, "0")}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/\D/g, "").slice(0, 2);
+        setDraft(raw);
+      }}
+      onFocus={(e) => {
+        setEditing(true);
+        setDraft(String(value));
+        setTimeout(() => e.target.select(), 0);
+      }}
+      onBlur={() => {
+        setEditing(false);
+        if (draft === "") return;
+        const num = Math.min(Math.max(1, parseInt(draft, 10)), max);
+        if (num !== value) onChange(num);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.target.blur();
+      }}
+      className="w-7 text-center text-sm font-semibold tabular-nums bg-transparent outline-none
+                 rounded hover:bg-[var(--surface)] focus:bg-[var(--surface)] transition-colors"
+      style={{ color: "var(--text-h)" }}
+    />
+  );
+};
+
+const YearInput = ({ value, onChange }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={editing ? draft : String(value)}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/\D/g, "").slice(0, 4);
+        setDraft(raw);
+      }}
+      onFocus={(e) => {
+        setEditing(true);
+        setDraft(String(value));
+        setTimeout(() => e.target.select(), 0);
+      }}
+      onBlur={() => {
+        setEditing(false);
+        if (draft.length < 4) return;
+        const num = parseInt(draft, 10);
+        if (num >= 2020 && num <= 2030 && num !== value) onChange(num);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.target.blur();
+      }}
+      className="w-11 text-center text-sm font-semibold tabular-nums bg-transparent outline-none
+                 rounded hover:bg-[var(--surface)] focus:bg-[var(--surface)] transition-colors"
+      style={{ color: "var(--text-h)" }}
+    />
+  );
+};
 
 const NavBar = ({ page, setPage, selectedDate, setSelectedDate, onPrevDate, onNextDate }) => {
   const yyyy = selectedDate.getFullYear();
@@ -83,11 +116,11 @@ const NavBar = ({ page, setPage, selectedDate, setSelectedDate, onPrevDate, onNe
         borderBottom: "1px solid var(--border)",
       }}
     >
-      <div className="max-w-5xl mx-auto px-6 flex items-center h-13 gap-6">
+      <div className="max-w-6xl mx-auto px-6 flex items-center h-16 gap-6">
         {/* Logo */}
         <div className="flex items-center gap-2 select-none shrink-0">
           <BarChart2 size={20} style={{ color: "var(--accent)" }} strokeWidth={2.5} />
-          <span className="font-black tracking-tight text-base" style={{ color: "var(--text-h)" }}>
+          <span className="font-black tracking-tight text-lg" style={{ color: "var(--text-h)" }}>
             so<span style={{ color: "var(--accent)" }}>sang</span>
           </span>
         </div>
@@ -102,7 +135,7 @@ const NavBar = ({ page, setPage, selectedDate, setSelectedDate, onPrevDate, onNe
               key={tab.id}
               onClick={() => setPage(tab.id)}
               aria-current={page === tab.id ? "page" : undefined}
-              className="text-sm font-semibold transition-all duration-150"
+              className="text-[15px] font-semibold transition-all duration-150"
               style={
                 page === tab.id
                   ? {
@@ -125,7 +158,7 @@ const NavBar = ({ page, setPage, selectedDate, setSelectedDate, onPrevDate, onNe
               className="w-1.5 h-1.5 rounded-full animate-pulse"
               style={{ background: "var(--risk-low)" }}
             />
-            <span className="text-xs font-medium" style={{ color: "var(--text)", opacity: 0.6 }}>
+            <span className="text-sm font-medium" style={{ color: "var(--text)", opacity: 0.6 }}>
               LIVE
             </span>
           </div>
@@ -141,7 +174,7 @@ const NavBar = ({ page, setPage, selectedDate, setSelectedDate, onPrevDate, onNe
               <ChevronLeft size={16} style={{ color: "var(--text)", opacity: 0.6 }} />
             </button>
 
-            <div className="flex items-center text-xs font-semibold" style={{ color: "var(--text-h)" }}>
+            <div className="flex items-center text-sm font-semibold" style={{ color: "var(--text-h)" }}>
               <YearInput value={yyyy} onChange={updateYear} />
               <span className="select-none" style={{ opacity: 0.4 }}>.</span>
               <DateInput value={mm} max={12} onChange={updateMonth} />

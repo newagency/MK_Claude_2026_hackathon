@@ -10,7 +10,7 @@ load_dotenv()
 class EconomicArchitect:
     def __init__(self):
         self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        self.model = "claude-3-5-sonnet-20240620"
+        self.model = "claude-3-5-haiku-20241022"
 
     def analyze_news(self, news_content: str) -> EconomicAnalysis:
         system_prompt = """
