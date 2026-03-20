@@ -65,3 +65,18 @@ CREATE INDEX IF NOT EXISTS idx_articles_main_category   ON news_articles(main_ca
 CREATE INDEX IF NOT EXISTS idx_articles_service_daytime ON news_articles(service_daytime);
 CREATE INDEX IF NOT EXISTS idx_article_categories_code  ON news_article_categories(code_id);
 CREATE INDEX IF NOT EXISTS idx_comments_article         ON news_comments(article_id);
+
+-- standard commodity prices (filtered 최고가만 유지)
+CREATE TABLE IF NOT EXISTS standard_prices (
+    id              BIGSERIAL   PRIMARY KEY,
+    stat_date       DATE        NOT NULL,
+    item_name       TEXT        NOT NULL,
+    variety_name    TEXT        NOT NULL,
+    grade_name      TEXT        NOT NULL,
+    price_per_kg    NUMERIC(12,2) NOT NULL,
+    created_at      TIMESTAMP   NOT NULL DEFAULT NOW(),
+    UNIQUE (stat_date, item_name, variety_name, grade_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_standard_prices_date_item
+    ON standard_prices(stat_date, item_name);
